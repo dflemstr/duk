@@ -1,0 +1,7 @@
+[package]
+name = "duk"
+version = "0.1.0"
+authors = ["David Flemström <david.flemstrom@gmail.com>"]
+
+[dependencies.duktape-sys]
+path = "duktape-sys"

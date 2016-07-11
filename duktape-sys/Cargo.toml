@@ -1,0 +1,9 @@
+[package]
+authors = ["David Flemström <david.flemstrom@gmail.com>"]
+build = "build.rs"
+name = "duktape-sys"
+version = "0.1.0"
+
+[build-dependencies]
+bindgen = "0.18.0"
+gcc = "0.3.28"
