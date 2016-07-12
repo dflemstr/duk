@@ -65,6 +65,9 @@ pub enum Error {
     /// An error that indicates that the specified type has no
     /// equivalent `Value` mapping.
     UnsupportedType(&'static str),
+    /// An error that indicates that the specified thing
+    /// (function/variable/...) does not exist.
+    NonExistent,
 }
 
 /// Kinds of Javascript/Ecmascript errors
@@ -168,14 +171,18 @@ impl Context {
         unsafe {
             duktape_sys::duk_push_global_object(self.0);
             let ffi_name = ffi::CString::new(name).unwrap();
-            duktape_sys::duk_get_prop_string(self.0, -1, ffi_name.as_ptr());
-            for arg in args {
-                arg.push(self.0);
+            if 1 == duktape_sys::duk_get_prop_string(self.0, -1, ffi_name.as_ptr()) {
+                for arg in args {
+                    arg.push(self.0);
+                }
+                let ret = duktape_sys::duk_pcall(self.0, args.len() as i32);
+                let result = self.pop_value_or_error(ret);
+                duktape_sys::duk_pop(self.0);
+                result
+            } else {
+                duktape_sys::duk_pop_2(self.0);
+                Err(Error::NonExistent)
             }
-            let ret = duktape_sys::duk_pcall(self.0, args.len() as i32);
-            let result = self.pop_value_or_error(ret);
-            duktape_sys::duk_pop(self.0);
-            result
         }
     }
 
@@ -378,7 +385,10 @@ unsafe extern "C" fn fatal_handler(ctx: *mut duktape_sys::duk_context,
     let context_dump = get_string(ctx, -1);
     duktape_sys::duk_pop(ctx);
     // TODO: No unwind support from C... but this "works" right now
-    panic!("Duktape fatal error (code {}): {}\n{}", code, msg, context_dump)
+    panic!("Duktape fatal error (code {}): {}\n{}",
+           code,
+           msg,
+           context_dump)
 }
 
 #[cfg(test)]
@@ -630,6 +640,14 @@ mod tests {
                        message: "a".to_owned(),
                    }),
                    value);
+        ctx.assert_clean();
+    }
+
+    #[test]
+    fn call_non_existent() {
+        let mut ctx = Context::new();
+        let value = ctx.call_global("foo", &[]);
+        assert_eq!(Err(Error::NonExistent), value);
         ctx.assert_clean();
     }
 }
