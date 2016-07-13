@@ -4,6 +4,10 @@ rust:
   - stable
 sudo: false
 
+env:
+  global:
+    - RUST_BACKTRACE=1
+
 script:
   - cargo test --manifest-path duktape-sys/Cargo.toml
   - cargo test
