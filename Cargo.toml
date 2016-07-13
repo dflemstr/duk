@@ -2,6 +2,11 @@
 name = "duk"
 version = "0.1.0"
 authors = ["David Flemström <david.flemstrom@gmail.com>"]
+description = "A high-level wrapper around the Duktape Javascript/ECMAScript interpreter"
+homepage = "https://github.com/dflemstr/duk"
+repository = "https://github.com/dflemstr/duk"
+readme = "README.md"
+keywords = ["javascript", "js", "ecmascript", "duktape"]
 
 [dependencies.duktape-sys]
 version = "*"
