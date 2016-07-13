@@ -1,4 +1,4 @@
-# duk
+# duk [![Build Status](https://travis-ci.org/dflemstr/duk.svg?branch=master)](https://travis-ci.org/dflemstr/duk)
 A high-level wrapper around the [Duktape][1] Javascript/EcmaScript
 interpreter.
 
