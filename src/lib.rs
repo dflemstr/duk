@@ -23,9 +23,20 @@ use std::ptr;
 use std::result;
 use std::slice;
 use std::str;
+use std::sync::atomic;
 
 /// A context corresponding to a thread of script execution.
-pub struct Context(*mut duktape_sys::duk_context);
+#[derive(Debug)]
+pub struct Context {
+    raw: *mut duktape_sys::duk_context,
+    next_stash_idx: atomic::AtomicUsize,
+}
+
+#[derive(Debug)]
+pub struct Reference<'a> {
+    ctx: &'a Context,
+    stash_idx: duktape_sys::duk_uarridx_t,
+}
 
 /// A Javascript/Ecmascript value that has an equivalent Rust mapping.
 ///
@@ -50,6 +61,10 @@ pub enum Value {
     Object(collections::BTreeMap<String, Value>),
     /// A Duktape byte buffer like `Duktape.Buffer('abc')`.
     Bytes(Vec<u8>),
+    /// A Duktape value that cannot be represented in Rust (yet).
+    ///
+    /// Contains a `&str` describing the foreign type.
+    Foreign(&'static str),
 }
 
 /// The type of errors that might occur.
@@ -114,10 +129,14 @@ pub type Result<A> = result::Result<A, Error>;
 impl Context {
     /// Creates a new context.
     pub fn new() -> Context {
-        let ctx = unsafe {
+        let raw = unsafe {
             duktape_sys::duk_create_heap(None, None, None, ptr::null_mut(), Some(fatal_handler))
         };
-        Context(ctx)
+
+        Context {
+            raw: raw,
+            next_stash_idx: atomic::ATOMIC_USIZE_INIT,
+        }
     }
 
     /// Evaluates the specified script string within the current
@@ -129,15 +148,16 @@ impl Context {
     ///
     /// ```
     /// let mut ctx = duk::Context::new();
-    /// let value = ctx.eval_string("'ab' + 'cd' + Math.floor(2.3)").unwrap();
+    /// let value = ctx.eval_string("'ab' + 'cd' + Math.floor(2.3)").unwrap().to_value();
     /// assert_eq!(duk::Value::String("abcd2".to_owned()), value);
     /// ```
     ///
     /// However, if we try to call a function that doesn't exist:
     ///
     /// ```
-    /// let mut ctx = duk::Context::new();
-    /// match ctx.eval_string("var a = {}; a.foo()") {
+    /// let ctx = duk::Context::new();
+    /// let result = ctx.eval_string("var a = {}; a.foo()");
+    /// match result {
     ///   Err(duk::Error::Js { kind, message, .. }) => {
     ///     assert_eq!(duk::JsErrorKind::Type, kind);
     ///     assert_eq!("TypeError: undefined not callable", message);
@@ -145,63 +165,85 @@ impl Context {
     ///   _ => unreachable!(),
     /// }
     /// ```
-    pub fn eval_string(&mut self, string: &str) -> Result<Value> {
+    pub fn eval_string(&self, string: &str) -> Result<Reference> {
         let ptr = string.as_ptr() as *const i8;
         let len = string.len();
         unsafe {
-            let ret = duktape_sys::duk_peval_lstring(self.0, ptr, len);
-            self.pop_value_or_error(ret)
+            let ret = duktape_sys::duk_peval_lstring(self.raw, ptr, len);
+            self.pop_reference_or_error(ret)
         }
     }
 
     /// Loads and evaluates the specified file within the current
     /// context.
-    pub fn eval_file(&mut self, path: &path::Path) -> Result<Value> {
+    pub fn eval_file(&self, path: &path::Path) -> Result<Reference> {
         let str_path = path.to_string_lossy();
         let ffi_str = ffi::CString::new(&*str_path).unwrap();
         unsafe {
-            let ret = duktape_sys::duk_peval_file(self.0, ffi_str.as_ptr());
-            self.pop_value_or_error(ret)
+            let ret = duktape_sys::duk_peval_file(self.raw, ffi_str.as_ptr());
+            self.pop_reference_or_error(ret)
         }
     }
 
     /// Calls the specified global script function with the supplied
     /// arguments.
-    pub fn call_global(&mut self, name: &str, args: &[Value]) -> Result<Value> {
+    pub fn call_global(&self, name: &str, args: &[Value]) -> Result<Reference> {
         unsafe {
-            duktape_sys::duk_push_global_object(self.0);
+            duktape_sys::duk_push_global_object(self.raw);
             let ffi_name = ffi::CString::new(name).unwrap();
-            if 1 == duktape_sys::duk_get_prop_string(self.0, -1, ffi_name.as_ptr()) {
+            if 1 == duktape_sys::duk_get_prop_string(self.raw, -1, ffi_name.as_ptr()) {
                 for arg in args {
-                    arg.push(self.0);
+                    arg.push(self.raw);
                 }
-                let ret = duktape_sys::duk_pcall(self.0, args.len() as i32);
-                let result = self.pop_value_or_error(ret);
-                duktape_sys::duk_pop(self.0);
+                let ret = duktape_sys::duk_pcall(self.raw, args.len() as i32);
+                let result = self.pop_reference_or_error(ret);
+                duktape_sys::duk_pop(self.raw);
                 result
             } else {
-                duktape_sys::duk_pop_2(self.0);
+                duktape_sys::duk_pop_2(self.raw);
                 Err(Error::NonExistent)
             }
         }
     }
 
-    #[cfg(test)]
-    pub fn assert_clean(&mut self) {
+    pub fn global_object(&self) -> Reference {
         unsafe {
-            assert!(duktape_sys::duk_get_top(self.0) == 0,
+            duktape_sys::duk_push_global_object(self.raw);
+            self.pop_reference()
+        }
+    }
+
+    #[cfg(test)]
+    pub fn assert_clean(&self) {
+        unsafe {
+            assert!(duktape_sys::duk_get_top(self.raw) == 0,
                     "context stack is not empty");
         }
     }
 
-    unsafe fn pop_value_or_error(&mut self, ret: duktape_sys::duk_ret_t) -> Result<Value> {
+    fn gen_stash_idx(&self) -> duktape_sys::duk_uarridx_t {
+        self.next_stash_idx.fetch_add(1, atomic::Ordering::Relaxed) as duktape_sys::duk_uarridx_t
+    }
+
+    unsafe fn pop_reference(&self) -> Reference {
+        let idx = self.gen_stash_idx();
+        duktape_sys::duk_push_heap_stash(self.raw);
+        duktape_sys::duk_dup(self.raw, -2);
+        duktape_sys::duk_put_prop_index(self.raw, -2, idx);
+        duktape_sys::duk_pop_2(self.raw);
+
+        Reference {
+            ctx: self,
+            stash_idx: idx,
+        }
+    }
+
+    unsafe fn pop_reference_or_error(&self, ret: duktape_sys::duk_ret_t) -> Result<Reference> {
         if ret == 0 {
-            let v = try!(Value::get(self.0, -1));
-            duktape_sys::duk_pop(self.0);
-            Ok(v)
+            Ok(self.pop_reference())
         } else {
-            let e = Error::get(self.0, -1);
-            duktape_sys::duk_pop(self.0);
+            let e = Error::get(self.raw, -1);
+            duktape_sys::duk_pop(self.raw);
             Err(e)
         }
     }
@@ -209,25 +251,53 @@ impl Context {
 
 impl Drop for Context {
     fn drop(&mut self) {
-        unsafe { duktape_sys::duk_destroy_heap(self.0) };
+        unsafe { duktape_sys::duk_destroy_heap(self.raw) };
+    }
+}
+
+impl<'a> Reference<'a> {
+    pub fn to_value(&self) -> Value {
+        unsafe {
+            duktape_sys::duk_push_heap_stash(self.ctx.raw);
+            duktape_sys::duk_get_prop_index(self.ctx.raw, -1, self.stash_idx);
+            let result = Value::get(self.ctx.raw, -1);
+            duktape_sys::duk_pop_2(self.ctx.raw);
+            result
+        }
+    }
+}
+
+impl<'a> PartialEq for Reference<'a> {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+
+impl<'a> Drop for Reference<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            duktape_sys::duk_push_heap_stash(self.ctx.raw);
+            duktape_sys::duk_del_prop_index(self.ctx.raw, -1, self.stash_idx);
+            duktape_sys::duk_pop(self.ctx.raw);
+        }
     }
 }
 
 impl Value {
     unsafe fn get(ctx: *mut duktape_sys::duk_context,
                   index: duktape_sys::duk_idx_t)
-                  -> Result<Value> {
+                  -> Value {
         let t = duktape_sys::duk_get_type(ctx, index);
         if t == duktape_sys::DUK_TYPE_UNDEFINED {
-            Ok(Value::Undefined)
+            Value::Undefined
         } else if t == duktape_sys::DUK_TYPE_NULL {
-            Ok(Value::Null)
+            Value::Null
         } else if t == duktape_sys::DUK_TYPE_BOOLEAN {
-            Ok(Value::Boolean(duktape_sys::duk_get_boolean(ctx, index) != 0))
+            Value::Boolean(duktape_sys::duk_get_boolean(ctx, index) != 0)
         } else if t == duktape_sys::DUK_TYPE_NUMBER {
-            Ok(Value::Number(duktape_sys::duk_get_number(ctx, index)))
+            Value::Number(duktape_sys::duk_get_number(ctx, index))
         } else if t == duktape_sys::DUK_TYPE_STRING {
-            Ok(Value::String(get_string(ctx, index)))
+            Value::String(get_string(ctx, index))
         } else if t == duktape_sys::DUK_TYPE_OBJECT {
             if 1 == duktape_sys::duk_is_array(ctx, index) {
                 let len = duktape_sys::duk_get_length(ctx, index);
@@ -235,35 +305,35 @@ impl Value {
 
                 for i in 0..len {
                     assert!(1 == duktape_sys::duk_get_prop_index(ctx, index, i as u32));
-                    array.push(try!(Value::get(ctx, -1)));
+                    array.push(Value::get(ctx, -1));
                     duktape_sys::duk_pop(ctx);
                 }
 
-                Ok(Value::Array(array))
+                Value::Array(array)
             } else {
                 let mut object = collections::BTreeMap::new();
                 duktape_sys::duk_enum(ctx, -1, duktape_sys::DUK_ENUM_OWN_PROPERTIES_ONLY);
 
                 while 1 == duktape_sys::duk_next(ctx, -1, 1) {
                     let key = get_string(ctx, -2);
-                    let value = try!(Value::get(ctx, -1));
+                    let value = Value::get(ctx, -1);
                     duktape_sys::duk_pop_2(ctx);
                     object.insert(key, value);
                 }
 
                 duktape_sys::duk_pop(ctx);
 
-                Ok(Value::Object(object))
+                Value::Object(object)
             }
         } else if t == duktape_sys::DUK_TYPE_BUFFER {
             let mut size = mem::uninitialized();
             let data = duktape_sys::duk_get_buffer(ctx, index, &mut size);
             let slice = slice::from_raw_parts(data as *const u8, size);
-            Ok(Value::Bytes(slice.to_vec()))
+            Value::Bytes(slice.to_vec())
         } else if t == duktape_sys::DUK_TYPE_POINTER {
-            Err(Error::UnsupportedType("pointer"))
+            Value::Foreign("pointer")
         } else if t == duktape_sys::DUK_TYPE_LIGHTFUNC {
-            Err(Error::UnsupportedType("lightfunc"))
+            Value::Foreign("lightfunc")
         } else {
             panic!("Unmapped type {}", t)
         }
@@ -310,6 +380,9 @@ impl Value {
                 let data = duktape_sys::duk_push_fixed_buffer(ctx, len);
 
                 ptr::copy(bytes.as_ptr(), data as *mut u8, len);
+            }
+            Value::Foreign(f) => {
+                panic!("Tried to use a Foreign value of type {} from Rust", f)
             }
         }
     }
@@ -399,96 +472,96 @@ mod tests {
 
     #[test]
     fn eval_string_undefined() {
-        let mut ctx = Context::new();
-        let value = ctx.eval_string("undefined");
-        assert_eq!(Ok(Value::Undefined), value);
+        let ctx = Context::new();
+        let value = ctx.eval_string("undefined").unwrap().to_value();
+        assert_eq!(Value::Undefined, value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_null() {
-        let mut ctx = Context::new();
-        let value = ctx.eval_string("null");
-        assert_eq!(Ok(Value::Null), value);
+        let ctx = Context::new();
+        let value = ctx.eval_string("null").unwrap().to_value();
+        assert_eq!(Value::Null, value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_boolean_true() {
-        let mut ctx = Context::new();
-        let value = ctx.eval_string("true");
-        assert_eq!(Ok(Value::Boolean(true)), value);
+        let ctx = Context::new();
+        let value = ctx.eval_string("true").unwrap().to_value();
+        assert_eq!(Value::Boolean(true), value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_boolean_false() {
-        let mut ctx = Context::new();
-        let value = ctx.eval_string("false");
-        assert_eq!(Ok(Value::Boolean(false)), value);
+        let ctx = Context::new();
+        let value = ctx.eval_string("false").unwrap().to_value();
+        assert_eq!(Value::Boolean(false), value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_number_integral() {
-        let mut ctx = Context::new();
-        let value = ctx.eval_string("4");
-        assert_eq!(Ok(Value::Number(4.0)), value);
+        let ctx = Context::new();
+        let value = ctx.eval_string("4").unwrap().to_value();
+        assert_eq!(Value::Number(4.0), value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_number_fractional() {
-        let mut ctx = Context::new();
-        let value = ctx.eval_string("0.5");
-        assert_eq!(Ok(Value::Number(0.5)), value);
+        let ctx = Context::new();
+        let value = ctx.eval_string("0.5").unwrap().to_value();
+        assert_eq!(Value::Number(0.5), value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_string() {
-        let mut ctx = Context::new();
-        let value = ctx.eval_string("'ab'");
-        assert_eq!(Ok(Value::String("ab".to_owned())), value);
+        let ctx = Context::new();
+        let value = ctx.eval_string("'ab'").unwrap().to_value();
+        assert_eq!(Value::String("ab".to_owned()), value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_array() {
-        let mut ctx = Context::new();
-        let value = ctx.eval_string("['a', 3, false]");
-        assert_eq!(Ok(Value::Array(vec![Value::String("a".to_owned()),
-                                        Value::Number(3.0),
-                                        Value::Boolean(false)])),
+        let ctx = Context::new();
+        let value = ctx.eval_string("['a', 3, false]").unwrap().to_value();
+        assert_eq!(Value::Array(vec![Value::String("a".to_owned()),
+                                     Value::Number(3.0),
+                                     Value::Boolean(false)]),
                    value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_object() {
-        let mut ctx = Context::new();
-        let value = ctx.eval_string("({a: 'a', b: 3, c: false})");
+        let ctx = Context::new();
+        let value = ctx.eval_string("({a: 'a', b: 3, c: false})").unwrap().to_value();
 
         let mut expected = collections::BTreeMap::new();
         expected.insert("a".to_owned(), Value::String("a".to_owned()));
         expected.insert("b".to_owned(), Value::Number(3.0));
         expected.insert("c".to_owned(), Value::Boolean(false));
 
-        assert_eq!(Ok(Value::Object(expected)), value);
+        assert_eq!(Value::Object(expected), value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_buffer() {
-        let mut ctx = Context::new();
-        let value = ctx.eval_string("Duktape.Buffer('abc')");
-        assert_eq!(Ok(Value::Bytes("abc".as_bytes().to_vec())), value);
+        let ctx = Context::new();
+        let value = ctx.eval_string("Duktape.Buffer('abc')").unwrap().to_value();
+        assert_eq!(Value::Bytes("abc".as_bytes().to_vec()), value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_error_generic() {
-        let mut ctx = Context::new();
+        let ctx = Context::new();
         let value = ctx.eval_string("throw 'foobar';");
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Generic,
@@ -500,7 +573,7 @@ mod tests {
 
     #[test]
     fn eval_string_error_error() {
-        let mut ctx = Context::new();
+        let ctx = Context::new();
         let value = ctx.eval_string("throw new Error('xyz')");
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Error,
@@ -512,7 +585,7 @@ mod tests {
 
     #[test]
     fn eval_string_eval_error() {
-        let mut ctx = Context::new();
+        let ctx = Context::new();
         let value = ctx.eval_string("throw new EvalError('xyz')");
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Eval,
@@ -524,7 +597,7 @@ mod tests {
 
     #[test]
     fn eval_string_range_error() {
-        let mut ctx = Context::new();
+        let ctx = Context::new();
         let value = ctx.eval_string("throw new RangeError('xyz')");
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Range,
@@ -536,7 +609,7 @@ mod tests {
 
     #[test]
     fn eval_string_reference_error() {
-        let mut ctx = Context::new();
+        let ctx = Context::new();
         let value = ctx.eval_string("throw new ReferenceError('xyz')");
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Reference,
@@ -548,7 +621,7 @@ mod tests {
 
     #[test]
     fn eval_string_syntax_error() {
-        let mut ctx = Context::new();
+        let ctx = Context::new();
         let value = ctx.eval_string("throw new SyntaxError('xyz')");
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Syntax,
@@ -560,7 +633,7 @@ mod tests {
 
     #[test]
     fn eval_string_type_error() {
-        let mut ctx = Context::new();
+        let ctx = Context::new();
         let value = ctx.eval_string("throw new TypeError('xyz')");
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Type,
@@ -572,7 +645,7 @@ mod tests {
 
     #[test]
     fn eval_string_uri_error() {
-        let mut ctx = Context::new();
+        let ctx = Context::new();
         let value = ctx.eval_string("throw new URIError('xyz')");
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Uri,
@@ -584,20 +657,20 @@ mod tests {
 
     #[test]
     fn eval_string_call_global() {
-        let mut ctx = Context::new();
+        let ctx = Context::new();
         ctx.eval_string(r"
           function foo() {
             return 'a';
           }")
            .unwrap();
-        let value = ctx.call_global("foo", &[]);
-        assert_eq!(Ok(Value::String("a".to_owned())), value);
+        let value = ctx.call_global("foo", &[]).unwrap().to_value();
+        assert_eq!(Value::String("a".to_owned()), value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_call_global_args() {
-        let mut ctx = Context::new();
+        let ctx = Context::new();
         ctx.eval_string(r"
           function foo() {
             return Array.prototype.slice.call(arguments);
@@ -621,14 +694,14 @@ mod tests {
                      Value::Array(arr),
                      Value::Object(obj),
                      Value::Bytes(bytes)];
-        let value = ctx.call_global("foo", args);
-        assert_eq!(Ok(Value::Array(args.to_vec())), value);
+        let value = ctx.call_global("foo", args).unwrap().to_value();
+        assert_eq!(Value::Array(args.to_vec()), value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_call_global_error() {
-        let mut ctx = Context::new();
+        let ctx = Context::new();
         ctx.eval_string(r"
           function foo() {
             throw 'a';
@@ -645,7 +718,7 @@ mod tests {
 
     #[test]
     fn call_non_existent() {
-        let mut ctx = Context::new();
+        let ctx = Context::new();
         let value = ctx.call_global("foo", &[]);
         assert_eq!(Err(Error::NonExistent), value);
         ctx.assert_clean();
