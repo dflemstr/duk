@@ -14,7 +14,7 @@ version = "0.1.0"
 gcc = "0.3.28"
 
 [dependencies]
-libc = "0.2.14"
+libc = "*"
 
 [dev-dependencies]
 bindgen = "0.18.0"
