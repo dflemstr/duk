@@ -14,15 +14,8 @@ script:
 
 deploy:
   - provider: script
-    script:
-      - cd target/doc
-      - git init
-      - git config user.email 'nobody@nobody.org'
-      - git config user.name 'Travis CI'
-      - git add .
-      - git commit -m "Generate rustdoc for $TRAVIS_COMMIT"
-      - git push --force "https://${GITHUB_TOKEN}@github.com/dflemstr/duk.git" master:gh-pages
+    script: ./deploy-doc
     skip_cleanup: true
     on:
-      repo: dflemstr/rq
-
+      repo: dflemstr/duk
+      rust: stable
