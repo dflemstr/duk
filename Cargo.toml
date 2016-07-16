@@ -4,6 +4,7 @@ description = "A high-level wrapper around the Duktape Javascript/ECMAScript int
 documentation = "https://dflemstr.github.io/duk/duk"
 homepage = "https://dflemstr.github.io/duk/duk"
 keywords = ["javascript", "js", "ecmascript", "duktape"]
+license = "MIT"
 name = "duk"
 readme = "README.md"
 repository = "https://github.com/dflemstr/duk"
