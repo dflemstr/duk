@@ -1,13 +1,18 @@
 [package]
 authors = ["David Flemström <david.flemstrom@gmail.com>"]
 build = "build.rs"
-name = "duktape-sys"
-version = "0.1.0"
 description = "Direct low-level auto-generated bindings to the duktape library"
 homepage = "https://github.com/dflemstr/duk"
-repository = "https://github.com/dflemstr/duk"
 keywords = ["javascript", "js", "ecmascript", "duktape"]
+name = "duktape-sys"
+repository = "https://github.com/dflemstr/duk"
+version = "0.1.0"
 
 [build-dependencies]
-bindgen = "0.18.0"
 gcc = "0.3.28"
+
+[dependencies]
+libc = "0.2.14"
+
+[dev-dependencies]
+bindgen = "0.18.0"

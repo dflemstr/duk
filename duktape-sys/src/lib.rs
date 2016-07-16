@@ -6,4 +6,8 @@
 //! [1]: http://duktape.org/
 #![allow(non_camel_case_types, non_snake_case)]
 
-include!(concat!(env!("OUT_DIR"), "/ffi.rs"));
+extern crate libc;
+
+mod ffi;
+
+pub use ffi::*;
