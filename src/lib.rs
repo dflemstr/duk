@@ -32,17 +32,18 @@ pub struct Context {
     next_stash_idx: atomic::AtomicUsize,
 }
 
+/// A reference to a value that lives within a `Context`.
 #[derive(Debug)]
 pub struct Reference<'a> {
     ctx: &'a Context,
     stash_idx: duktape_sys::duk_uarridx_t,
 }
 
-/// A Javascript/Ecmascript value that has an equivalent Rust mapping.
+/// A Javascript/Ecmascript value that exists in the Rust world.
 ///
-/// Duktape supports values beyond these, but they don't have good
-/// Rust semantics, so they cannot be interacted with from the Rust
-/// world.
+/// Duktape supports values beyond these, but they don't have good Rust semantics, so they cannot be
+/// interacted with from the Rust world.  They are therefore mapped to `Value::Foreign` when
+/// retrieved, and trying to further use those values is generally equivalent to using `undefined`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     /// The `undefined` value.
@@ -77,12 +78,6 @@ pub enum Error {
         /// A descriptive user-controlled error message.
         message: String,
     },
-    /// An error that indicates that the specified type has no
-    /// equivalent `Value` mapping.
-    UnsupportedType(&'static str),
-    /// An error that indicates that the specified thing
-    /// (function/variable/...) does not exist.
-    NonExistent,
 }
 
 /// Kinds of Javascript/Ecmascript errors
@@ -185,32 +180,20 @@ impl Context {
         }
     }
 
-    /// Calls the specified global script function with the supplied
-    /// arguments.
-    pub fn call_global(&self, name: &str, args: &[Value]) -> Result<Reference> {
-        unsafe {
-            duktape_sys::duk_push_global_object(self.raw);
-            let ffi_name = ffi::CString::new(name).unwrap();
-            if 1 == duktape_sys::duk_get_prop_string(self.raw, -1, ffi_name.as_ptr()) {
-                for arg in args {
-                    arg.push(self.raw);
-                }
-                let ret = duktape_sys::duk_pcall(self.raw, args.len() as i32);
-                let result = self.pop_reference_or_error(ret);
-                duktape_sys::duk_pop(self.raw);
-                result
-            } else {
-                duktape_sys::duk_pop_2(self.raw);
-                Err(Error::NonExistent)
-            }
-        }
-    }
-
+    /// Retrieves a reference to the global object.
     pub fn global_object(&self) -> Reference {
         unsafe {
             duktape_sys::duk_push_global_object(self.raw);
             self.pop_reference()
         }
+    }
+
+    /// Calls the specified global script function with the supplied
+    /// arguments.
+    ///
+    /// Behaves like `global_object().call_method(name, args)`.
+    pub fn call_global(&self, name: &str, args: &[Value]) -> Result<Reference> {
+        self.global_object().call_method(name, args)
     }
 
     #[cfg(test)]
@@ -256,14 +239,111 @@ impl Drop for Context {
 }
 
 impl<'a> Reference<'a> {
+    /// Converts this reference to a `Value` which can be used for further processing by Rust code.
     pub fn to_value(&self) -> Value {
+        self.with_value(|| { unsafe { Value::get(self.ctx.raw, -1) } })
+    }
+
+    /// Gets the property with the specified key, provided that this reference points to something
+    /// that is object coercible.
+    pub fn get(&self, name: &str) -> Result<Reference<'a>> {
+        let ffi_str = ffi::CString::new(name).unwrap();
+        self.with_value(|| {
+            unsafe {
+                if 0 == duktape_sys::duk_is_object_coercible(self.ctx.raw, -1) {
+                    Err(Error::Js {
+                        kind: JsErrorKind::Type,
+                        message: "not object coercible".to_owned(),
+                    })
+                } else {
+                    duktape_sys::duk_get_prop_string(self.ctx.raw, -1, ffi_str.as_ptr());
+                    Ok(self.ctx.pop_reference())
+                }
+            }
+        })
+    }
+
+    /// Calls the function that this reference points to without a `this` binding, using the
+    /// specified arguments.
+    ///
+    /// When the function executes, the `this` binding is set to `undefined` or the global object,
+    /// depending on if the function is strict or not.  Calling this function is equivalent to doing
+    /// `myfunc.call(undefined, args)` in Javascript.
+    pub fn call(&self, args: &[Value]) -> Result<Reference<'a>> {
+        self.with_value(|| {
+            unsafe {
+                duktape_sys::duk_dup_top(self.ctx.raw); // Because pcall consumes the stack
+                for arg in args {
+                    arg.push(self.ctx.raw);
+                }
+                let ret = duktape_sys::duk_pcall(self.ctx.raw,
+                                                 args.len() as duktape_sys::duk_idx_t);
+                self.ctx.pop_reference_or_error(ret)
+            }
+        })
+    }
+
+    /// Calls the function that this reference points to with an explicit `this` binding.
+    pub fn call_with_this(&self, this: &Reference, args: &[Value]) -> Result<Reference<'a>> {
+        self.with_value(|| {
+            unsafe {
+                duktape_sys::duk_dup_top(self.ctx.raw); // Because pcall consumes the stack
+                this.push();
+
+                for arg in args {
+                    arg.push(self.ctx.raw);
+                }
+                let ret = duktape_sys::duk_pcall_method(self.ctx.raw,
+                                                        args.len() as duktape_sys::duk_idx_t);
+                self.ctx.pop_reference_or_error(ret)
+            }
+        })
+    }
+
+    /// Calls a method on the object that this reference points to.
+    ///
+    /// The `this` binding will be set to the object during the execution of the function.  Calling
+    /// this function is equivalent to doing `myobj[name](args...)` in Javascript.
+    pub fn call_method(&self, name: &str, args: &[Value]) -> Result<Reference<'a>> {
+        self.with_value(|| {
+            unsafe {
+                let obj_idx = duktape_sys::duk_get_top_index(self.ctx.raw);
+                duktape_sys::duk_push_lstring(self.ctx.raw, name.as_ptr() as *const i8, name.len());
+
+                for arg in args {
+                    arg.push(self.ctx.raw);
+                }
+
+                let ret = duktape_sys::duk_pcall_prop(self.ctx.raw,
+                                                      obj_idx,
+                                                      args.len() as duktape_sys::duk_idx_t);
+
+                self.ctx.pop_reference_or_error(ret)
+            }
+        })
+    }
+
+    #[inline]
+    fn with_value<F, R>(&self, action: F) -> R
+        where F: FnOnce() -> R
+    {
         unsafe {
-            duktape_sys::duk_push_heap_stash(self.ctx.raw);
-            duktape_sys::duk_get_prop_index(self.ctx.raw, -1, self.stash_idx);
-            let result = Value::get(self.ctx.raw, -1);
-            duktape_sys::duk_pop_2(self.ctx.raw);
+            self.push();
+            let result = action();
+            self.pop();
             result
         }
+    }
+
+    unsafe fn push(&self) {
+        duktape_sys::duk_push_heap_stash(self.ctx.raw);
+        duktape_sys::duk_get_prop_index(self.ctx.raw, -1, self.stash_idx);
+        duktape_sys::duk_remove(self.ctx.raw, -2);
+    }
+
+    unsafe fn pop(&self) {
+        duktape_sys::duk_pop(self.ctx.raw);
+
     }
 }
 
@@ -284,9 +364,7 @@ impl<'a> Drop for Reference<'a> {
 }
 
 impl Value {
-    unsafe fn get(ctx: *mut duktape_sys::duk_context,
-                  index: duktape_sys::duk_idx_t)
-                  -> Value {
+    unsafe fn get(ctx: *mut duktape_sys::duk_context, index: duktape_sys::duk_idx_t) -> Value {
         let t = duktape_sys::duk_get_type(ctx, index);
         if t == duktape_sys::DUK_TYPE_UNDEFINED {
             Value::Undefined
@@ -381,9 +459,7 @@ impl Value {
 
                 ptr::copy(bytes.as_ptr(), data as *mut u8, len);
             }
-            Value::Foreign(f) => {
-                panic!("Tried to use a Foreign value of type {} from Rust", f)
-            }
+            Value::Foreign(_) => duktape_sys::duk_push_undefined(ctx),
         }
     }
 }
@@ -656,6 +732,63 @@ mod tests {
     }
 
     #[test]
+    fn eval_string_global_object_get_key_call() {
+        let ctx = Context::new();
+        ctx.eval_string(r"
+          function foo() {
+            return 'a';
+          }")
+           .unwrap();
+        let global = ctx.global_object();
+        ctx.assert_clean();
+        let foo = global.get("foo").unwrap();
+        ctx.assert_clean();
+        let value = foo.call(&[]).unwrap().to_value();
+        assert_eq!(Value::String("a".to_owned()), value);
+        ctx.assert_clean();
+    }
+
+    #[test]
+    fn eval_string_global_object_call_method() {
+        let ctx = Context::new();
+        ctx.eval_string(r"
+          var bar = 2;
+          function foo() {
+            if (this === undefined || this.bar !== 2) {
+              throw 'b';
+            }
+            return Array.prototype.slice.call(arguments);
+          }")
+           .unwrap();
+        let global = ctx.global_object();
+        ctx.assert_clean();
+        let value = global.call_method("foo", &[Value::Number(4.25)]).unwrap().to_value();
+        assert_eq!(Value::Array(vec![Value::Number(4.25)]), value);
+        ctx.assert_clean();
+    }
+
+    #[test]
+    fn eval_string_global_object_get_key_call_with_this() {
+        let ctx = Context::new();
+        ctx.eval_string(r"
+          var bar = 2;
+          function foo() {
+            if (this === undefined || this.bar !== 2) {
+              throw 'b';
+            }
+            return Array.prototype.slice.call(arguments);
+          }")
+           .unwrap();
+        let global = ctx.global_object();
+        ctx.assert_clean();
+        let foo = global.get("foo").unwrap();
+        ctx.assert_clean();
+        let value = foo.call_with_this(&global, &[Value::Number(4.25)]).unwrap().to_value();
+        assert_eq!(Value::Array(vec![Value::Number(4.25)]), value);
+        ctx.assert_clean();
+    }
+
+    #[test]
     fn eval_string_call_global() {
         let ctx = Context::new();
         ctx.eval_string(r"
@@ -720,7 +853,11 @@ mod tests {
     fn call_non_existent() {
         let ctx = Context::new();
         let value = ctx.call_global("foo", &[]);
-        assert_eq!(Err(Error::NonExistent), value);
+        assert_eq!(Err(Error::Js {
+                       kind: JsErrorKind::Type,
+                       message: "TypeError: undefined not callable".to_owned(),
+                   }),
+                   value);
         ctx.assert_clean();
     }
 }
