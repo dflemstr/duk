@@ -9,7 +9,6 @@ env:
     - RUST_BACKTRACE=1
 
 script:
-  - cargo test --manifest-path duktape-sys/Cargo.toml
   - cargo test
   - cargo doc
 
