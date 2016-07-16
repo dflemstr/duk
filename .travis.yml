@@ -10,7 +10,7 @@ env:
 
 script:
   - cargo test
-  - cargo doc
+  - cargo doc --no-deps
 
 deploy:
   - provider: script
