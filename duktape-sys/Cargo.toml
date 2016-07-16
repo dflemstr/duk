@@ -2,7 +2,8 @@
 authors = ["David Flemström <david.flemstrom@gmail.com>"]
 build = "build.rs"
 description = "Direct low-level auto-generated bindings to the duktape library"
-homepage = "https://github.com/dflemstr/duk"
+documentation = "https://dflemstr.github.io/duk/duktape_sys"
+homepage = "https://dflemstr.github.io/duk/duktape_sys"
 keywords = ["javascript", "js", "ecmascript", "duktape"]
 name = "duktape-sys"
 repository = "https://github.com/dflemstr/duk"

@@ -1,13 +1,14 @@
 [package]
-name = "duk"
-version = "0.1.0"
 authors = ["David Flemström <david.flemstrom@gmail.com>"]
 description = "A high-level wrapper around the Duktape Javascript/ECMAScript interpreter"
-homepage = "https://github.com/dflemstr/duk"
-repository = "https://github.com/dflemstr/duk"
-readme = "README.md"
+documentation = "https://dflemstr.github.io/duk/duk"
+homepage = "https://dflemstr.github.io/duk/duk"
 keywords = ["javascript", "js", "ecmascript", "duktape"]
+name = "duk"
+readme = "README.md"
+repository = "https://github.com/dflemstr/duk"
+version = "0.1.0"
 
 [dependencies.duktape-sys]
-version = "*"
 path = "duktape-sys"
+version = "*"
