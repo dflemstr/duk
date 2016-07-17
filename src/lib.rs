@@ -395,6 +395,16 @@ impl<'a> Drop for Reference<'a> {
 }
 
 impl Value {
+
+    /// Copies this value into a `Context`, and returns the reference to the value within the
+    /// context.
+    pub fn to_reference<'a>(&self, context: &'a Context) -> Reference<'a> {
+        unsafe {
+            self.push(context.raw);
+            context.pop_reference()
+        }
+    }
+
     unsafe fn get(ctx: *mut duktape_sys::duk_context, index: duktape_sys::duk_idx_t) -> Value {
         let t = duktape_sys::duk_get_type(ctx, index);
         if t == duktape_sys::DUK_TYPE_UNDEFINED {
