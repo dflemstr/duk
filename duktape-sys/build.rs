@@ -8,7 +8,8 @@ fn main() {
     if cfg!(debug) {
         config.define("DUK_USE_DEBUG", Some("1"));
         config.define("DUK_USE_DEBUG_WRITE", Some("__duktape_sys_debug_write"));
-        config.define("DUK_USE_DEBUG_LEVEL", Some("2"));
+        config.define("DUK_USE_DDPRINT", Some("1"));
+        config.define("DUK_USE_DDDPRINT", Some("1"));
     }
 
     config.compile("libduktape.a");
