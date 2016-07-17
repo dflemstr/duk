@@ -323,6 +323,21 @@ impl<'a> Reference<'a> {
         })
     }
 
+    /// Calls the function that this reference points to as a constructor, with the specified
+    /// arguments.
+    pub fn new(&self, args: &[Value]) -> Result<Reference<'a>> {
+        self.with_value(|| {
+            unsafe {
+                duktape_sys::duk_dup_top(self.ctx.raw); // Because pnew consumes the stack
+                for arg in args {
+                    arg.push(self.ctx.raw);
+                }
+                let ret = duktape_sys::duk_pnew(self.ctx.raw, args.len() as duktape_sys::duk_idx_t);
+                self.ctx.pop_reference_or_error(ret)
+            }
+        })
+    }
+
     #[inline]
     fn with_value<F, R>(&self, action: F) -> R
         where F: FnOnce() -> R
@@ -784,6 +799,26 @@ mod tests {
         let foo = global.get("foo").unwrap();
         ctx.assert_clean();
         let value = foo.call_with_this(&global, &[Value::Number(4.25)]).unwrap().to_value();
+        assert_eq!(Value::Array(vec![Value::Number(4.25)]), value);
+        ctx.assert_clean();
+    }
+
+    #[test]
+    fn eval_string_global_object_get_key_new() {
+        let ctx = Context::new();
+        ctx.eval_string(r"
+          function foo() {
+            if (this.constructor !== foo) {
+              throw 'b';
+            }
+            return Array.prototype.slice.call(arguments);
+          }")
+           .unwrap();
+        let global = ctx.global_object();
+        ctx.assert_clean();
+        let foo = global.get("foo").unwrap();
+        ctx.assert_clean();
+        let value = foo.new(&[Value::Number(4.25)]).unwrap().to_value();
         assert_eq!(Value::Array(vec![Value::Number(4.25)]), value);
         ctx.assert_clean();
     }
