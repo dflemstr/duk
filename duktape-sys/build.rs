@@ -1,5 +1,14 @@
 extern crate gcc;
 
 fn main() {
-    gcc::compile_library("libduktape.a", &["duktape/src/duktape.c", "src/wrapper.c"]);
+    let mut config = gcc::Config::new();
+    config.file("duktape/src/duktape.c");
+    config.file("src/wrapper.c");
+
+    if cfg!(debug) {
+        config.define("DUK_USE_DEBUG", None);
+        config.define("DUK_USE_DEBUG_WRITE", Some("__duktape_sys_debug_write"));
+    }
+
+    config.compile("libduktape.a");
 }
