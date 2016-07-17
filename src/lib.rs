@@ -32,6 +32,13 @@ pub struct Context {
     next_stash_idx: atomic::AtomicUsize,
 }
 
+/// Something that can be used as an argument when calling into Javascript code.
+pub trait Argument {
+    /// Pushes this argument to the stack of the specified context.  This requires interaction with
+    /// the internals of the context, and is therefore an unsafe operation.
+    unsafe fn push_to_context(&self, context: &Context);
+}
+
 /// A reference to a value that lives within a `Context`.
 #[derive(Debug)]
 pub struct Reference<'a> {
@@ -192,7 +199,7 @@ impl Context {
     /// arguments.
     ///
     /// Behaves like `global_object().call_method(name, args)`.
-    pub fn call_global(&self, name: &str, args: &[Value]) -> Result<Reference> {
+    pub fn call_global(&self, name: &str, args: &[&Argument]) -> Result<Reference> {
         self.global_object().call_method(name, args)
     }
 
@@ -269,12 +276,12 @@ impl<'a> Reference<'a> {
     /// When the function executes, the `this` binding is set to `undefined` or the global object,
     /// depending on if the function is strict or not.  Calling this function is equivalent to doing
     /// `myfunc.call(undefined, args)` in Javascript.
-    pub fn call(&self, args: &[Value]) -> Result<Reference<'a>> {
+    pub fn call(&self, args: &[&Argument]) -> Result<Reference<'a>> {
         self.with_value(|| {
             unsafe {
                 duktape_sys::duk_dup_top(self.ctx.raw); // Because pcall consumes the stack
                 for arg in args {
-                    arg.push(self.ctx.raw);
+                    arg.push_to_context(self.ctx);
                 }
                 let ret = duktape_sys::duk_pcall(self.ctx.raw,
                                                  args.len() as duktape_sys::duk_idx_t);
@@ -284,14 +291,14 @@ impl<'a> Reference<'a> {
     }
 
     /// Calls the function that this reference points to with an explicit `this` binding.
-    pub fn call_with_this(&self, this: &Reference, args: &[Value]) -> Result<Reference<'a>> {
+    pub fn call_with_this(&self, this: &Argument, args: &[&Argument]) -> Result<Reference<'a>> {
         self.with_value(|| {
             unsafe {
                 duktape_sys::duk_dup_top(self.ctx.raw); // Because pcall consumes the stack
-                this.push();
+                this.push_to_context(self.ctx);
 
                 for arg in args {
-                    arg.push(self.ctx.raw);
+                    arg.push_to_context(self.ctx);
                 }
                 let ret = duktape_sys::duk_pcall_method(self.ctx.raw,
                                                         args.len() as duktape_sys::duk_idx_t);
@@ -304,14 +311,14 @@ impl<'a> Reference<'a> {
     ///
     /// The `this` binding will be set to the object during the execution of the function.  Calling
     /// this function is equivalent to doing `myobj[name](args...)` in Javascript.
-    pub fn call_method(&self, name: &str, args: &[Value]) -> Result<Reference<'a>> {
+    pub fn call_method(&self, name: &str, args: &[&Argument]) -> Result<Reference<'a>> {
         self.with_value(|| {
             unsafe {
                 let obj_idx = duktape_sys::duk_get_top_index(self.ctx.raw);
                 duktape_sys::duk_push_lstring(self.ctx.raw, name.as_ptr() as *const i8, name.len());
 
                 for arg in args {
-                    arg.push(self.ctx.raw);
+                    arg.push_to_context(self.ctx);
                 }
 
                 let ret = duktape_sys::duk_pcall_prop(self.ctx.raw,
@@ -325,12 +332,12 @@ impl<'a> Reference<'a> {
 
     /// Calls the function that this reference points to as a constructor, with the specified
     /// arguments.
-    pub fn new(&self, args: &[Value]) -> Result<Reference<'a>> {
+    pub fn new(&self, args: &[&Argument]) -> Result<Reference<'a>> {
         self.with_value(|| {
             unsafe {
                 duktape_sys::duk_dup_top(self.ctx.raw); // Because pnew consumes the stack
                 for arg in args {
-                    arg.push(self.ctx.raw);
+                    arg.push_to_context(self.ctx);
                 }
                 let ret = duktape_sys::duk_pnew(self.ctx.raw, args.len() as duktape_sys::duk_idx_t);
                 self.ctx.pop_reference_or_error(ret)
@@ -358,7 +365,16 @@ impl<'a> Reference<'a> {
 
     unsafe fn pop(&self) {
         duktape_sys::duk_pop(self.ctx.raw);
+    }
+}
 
+impl<'a> Argument for Reference<'a> {
+    unsafe fn push_to_context(&self, context: &Context) {
+        if context.raw != self.ctx.raw {
+            panic!("Tried to mix references coming from different contexts");
+        }
+
+        self.push();
     }
 }
 
@@ -476,6 +492,12 @@ impl Value {
             }
             Value::Foreign(_) => duktape_sys::duk_push_undefined(ctx),
         }
+    }
+}
+
+impl Argument for Value {
+    unsafe fn push_to_context(&self, context: &Context) {
+        self.push(context.raw);
     }
 }
 
@@ -777,7 +799,7 @@ mod tests {
            .unwrap();
         let global = ctx.global_object();
         ctx.assert_clean();
-        let value = global.call_method("foo", &[Value::Number(4.25)]).unwrap().to_value();
+        let value = global.call_method("foo", &[&Value::Number(4.25)]).unwrap().to_value();
         assert_eq!(Value::Array(vec![Value::Number(4.25)]), value);
         ctx.assert_clean();
     }
@@ -798,7 +820,7 @@ mod tests {
         ctx.assert_clean();
         let foo = global.get("foo").unwrap();
         ctx.assert_clean();
-        let value = foo.call_with_this(&global, &[Value::Number(4.25)]).unwrap().to_value();
+        let value = foo.call_with_this(&global, &[&Value::Number(4.25)]).unwrap().to_value();
         assert_eq!(Value::Array(vec![Value::Number(4.25)]), value);
         ctx.assert_clean();
     }
@@ -818,7 +840,7 @@ mod tests {
         ctx.assert_clean();
         let foo = global.get("foo").unwrap();
         ctx.assert_clean();
-        let value = foo.new(&[Value::Number(4.25)]).unwrap().to_value();
+        let value = foo.new(&[&Value::Number(4.25)]).unwrap().to_value();
         assert_eq!(Value::Array(vec![Value::Number(4.25)]), value);
         ctx.assert_clean();
     }
@@ -854,16 +876,17 @@ mod tests {
 
         let bytes = vec![0, 1, 2, 3];
 
-        let args = &[Value::Undefined,
-                     Value::Null,
-                     Value::Boolean(true),
-                     Value::Number(1.0),
-                     Value::String("foo".to_owned()),
-                     Value::Array(arr),
-                     Value::Object(obj),
-                     Value::Bytes(bytes)];
-        let value = ctx.call_global("foo", args).unwrap().to_value();
-        assert_eq!(Value::Array(args.to_vec()), value);
+        let values = &[Value::Undefined,
+                       Value::Null,
+                       Value::Boolean(true),
+                       Value::Number(1.0),
+                       Value::String("foo".to_owned()),
+                       Value::Array(arr),
+                       Value::Object(obj),
+                       Value::Bytes(bytes)];
+        let args = values.iter().map(|v| v as &Argument).collect::<Vec<_>>();
+        let value = ctx.call_global("foo", &args).unwrap().to_value();
+        assert_eq!(Value::Array(values.to_vec()), value);
         ctx.assert_clean();
     }
 
