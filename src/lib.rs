@@ -15,7 +15,9 @@
 extern crate duktape_sys;
 
 use std::collections;
+use std::error;
 use std::ffi;
+use std::fmt;
 use std::mem;
 use std::os;
 use std::path;
@@ -395,7 +397,6 @@ impl<'a> Drop for Reference<'a> {
 }
 
 impl Value {
-
     /// Copies this value into a `Context`, and returns the reference to the value within the
     /// context.
     pub fn to_reference<'a>(&self, context: &'a Context) -> Reference<'a> {
@@ -524,6 +525,22 @@ impl Error {
         Error::Js {
             kind: kind,
             message: message,
+        }
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Error::Js { ref message, .. } => write!(f, "JS error: {}", message),
+        }
+    }
+}
+
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        match *self {
+            Error::Js { .. } => "JS error",
         }
     }
 }
