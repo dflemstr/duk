@@ -19,3 +19,8 @@ log = "0.3.6"
 
 [dev-dependencies]
 bindgen = "0.18.0"
+
+[features]
+debug = []
+trace = []
+spam = []
