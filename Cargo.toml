@@ -13,3 +13,8 @@ version = "0.1.0"
 [dependencies.duktape-sys]
 path = "duktape-sys"
 version = "*"
+
+[features]
+debug = ["duktape-sys/debug"]
+trace = ["duktape-sys/trace"]
+spam = ["duktape-sys/spam"]
