@@ -125,6 +125,10 @@ impl Context {
             duktape_sys::duk_create_heap(None, None, None, ptr::null_mut(), Some(fatal_handler))
         };
 
+        unsafe {
+            duktape_sys::duk_logging_init(raw, 0);
+        }
+
         Context {
             raw: raw,
             next_stash_idx: atomic::ATOMIC_USIZE_INIT,

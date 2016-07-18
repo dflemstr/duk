@@ -18,6 +18,7 @@ fn write_ffi() -> io::Result<()> {
         .clang_arg("-Iduktape/src")
         .clang_arg("-Iduktape/extras/logging")
         .match_pat("duk_config.h")
+        .match_pat("duk_logging.h")
         .match_pat("duktape.h")
         .match_pat("wrapper.h")
         .forbid_unknown_types()

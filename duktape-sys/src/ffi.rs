@@ -724,6 +724,11 @@ extern "C" {
     pub fn duk_components_to_time(ctx: *mut duk_context,
                                   comp: *mut duk_time_components)
      -> duk_double_t;
+    pub fn duk_logging_init(ctx: *mut duk_context, flags: duk_uint_t);
+    pub fn duk_log_va(ctx: *mut duk_context, level: duk_int_t,
+                      fmt: *const ::std::os::raw::c_char, ap: va_list);
+    pub fn duk_log(ctx: *mut duk_context, level: duk_int_t,
+                   fmt: *const ::std::os::raw::c_char, ...);
     pub fn duk_create_heap_default() -> *mut duk_context;
     pub fn duk_xmove_top(to_ctx: *mut duk_context, from_ctx: *mut duk_context,
                          count: duk_idx_t);
