@@ -243,6 +243,8 @@ const MACRO_FUNCTIONS: &'static [(&'static str, &'static str, &'static [(&'stati
      &[("duk_context *", "ctx")]),
     ("duk_idx_t", "duk_push_thread_new_globalenv",
      &[("duk_context *", "ctx")]),
+    ("duk_idx_t", "duk_push_error_object",
+     &[("duk_context *", "ctx"), ("duk_errcode_t", "err_code"), ("const char *", "fmt")]),
     ("void *", "duk_push_buffer",
      &[("duk_context *", "ctx"), ("duk_size_t", "size"), ("duk_bool_t", "dynamic")]),
     ("void *", "duk_push_fixed_buffer",

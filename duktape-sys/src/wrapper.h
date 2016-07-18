@@ -456,6 +456,11 @@ duk_idx_t duk_push_thread(duk_context * ctx);
 duk_idx_t duk_push_thread_new_globalenv(duk_context * ctx);
 #pragma pop_macro("duk_push_thread_new_globalenv")
 
+#pragma push_macro("duk_push_error_object")
+#undef duk_push_error_object
+duk_idx_t duk_push_error_object(duk_context * ctx, duk_errcode_t err_code, const char * fmt);
+#pragma pop_macro("duk_push_error_object")
+
 #pragma push_macro("duk_push_buffer")
 #undef duk_push_buffer
 void * duk_push_buffer(duk_context * ctx, duk_size_t size, duk_bool_t dynamic);

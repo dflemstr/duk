@@ -734,6 +734,10 @@ extern "C" {
      -> *const ::std::os::raw::c_char;
     pub fn duk_push_thread(ctx: *mut duk_context) -> duk_idx_t;
     pub fn duk_push_thread_new_globalenv(ctx: *mut duk_context) -> duk_idx_t;
+    pub fn duk_push_error_object(ctx: *mut duk_context,
+                                 err_code: duk_errcode_t,
+                                 fmt: *const ::std::os::raw::c_char)
+     -> duk_idx_t;
     pub fn duk_push_buffer(ctx: *mut duk_context, size: duk_size_t,
                            dynamic: duk_bool_t)
      -> *mut ::std::os::raw::c_void;

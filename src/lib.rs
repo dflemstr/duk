@@ -86,6 +86,9 @@ pub enum Error {
         kind: JsErrorKind,
         /// A descriptive user-controlled error message.
         message: String,
+        file_name: Option<String>,
+        line_number: Option<usize>,
+        stack: Option<String>,
     },
 }
 
@@ -149,7 +152,7 @@ impl Context {
     /// match result {
     ///   Err(duk::Error::Js { kind, message, .. }) => {
     ///     assert_eq!(duk::JsErrorKind::Type, kind);
-    ///     assert_eq!("TypeError: undefined not callable", message);
+    ///     assert_eq!("undefined not callable", message);
     ///   },
     ///   _ => unreachable!(),
     /// }
@@ -215,13 +218,17 @@ impl Context {
         }
     }
 
+    unsafe fn pop_error(&self) -> Error {
+        let e = Error::get(self.raw, -1);
+        duktape_sys::duk_pop(self.raw);
+        e
+    }
+
     unsafe fn pop_reference_or_error(&self, ret: duktape_sys::duk_ret_t) -> Result<Reference> {
         if ret == 0 {
             Ok(self.pop_reference())
         } else {
-            let e = Error::get(self.raw, -1);
-            duktape_sys::duk_pop(self.raw);
-            Err(e)
+            Err(self.pop_error())
         }
     }
 }
@@ -245,10 +252,11 @@ impl<'a> Reference<'a> {
         self.with_value(|| {
             unsafe {
                 if 0 == duktape_sys::duk_is_object_coercible(self.ctx.raw, -1) {
-                    Err(Error::Js {
-                        kind: JsErrorKind::Type,
-                        message: "not object coercible".to_owned(),
-                    })
+                    let msg = ffi::CString::new("value is not object coercible").unwrap();
+                    duktape_sys::duk_push_error_object(self.ctx.raw,
+                                                       duktape_sys::DUK_ERR_TYPE_ERROR,
+                                                       msg.as_ptr());
+                    Err(self.ctx.pop_error())
                 } else {
                     duktape_sys::duk_get_prop_string(self.ctx.raw, -1, ffi_str.as_ptr());
                     Ok(self.ctx.pop_reference())
@@ -501,15 +509,31 @@ impl Error {
     unsafe fn get(ctx: *mut duktape_sys::duk_context, index: duktape_sys::duk_idx_t) -> Error {
         let e = duktape_sys::duk_get_error_code(ctx, index);
         let kind = JsErrorKind::from_raw(e);
-
-        let mut len = mem::uninitialized();
-        let data = duktape_sys::duk_safe_to_lstring(ctx, index, &mut len);
-        let msg_slice = slice::from_raw_parts(data as *const u8, len);
-        let message = String::from(str::from_utf8(msg_slice).unwrap());
+        let message = get_string_property(ctx, index, "message").unwrap_or_else(|| {
+            let mut len = mem::uninitialized();
+            let data = duktape_sys::duk_safe_to_lstring(ctx, index, &mut len);
+            let msg_slice = slice::from_raw_parts(data as *const u8, len);
+            String::from(str::from_utf8(msg_slice).unwrap())
+        });
+        let file_name = get_string_property(ctx, index, "fileName").and_then(|n| if n.is_empty() {
+            None
+        } else {
+            Some(n)
+        });
+        let line_number = get_number_property(ctx, index, "lineNumber")
+                              .and_then(|n| if n.is_nan() {
+                                  None
+                              } else {
+                                  Some(n as usize)
+                              });
+        let stack = get_string_property(ctx, index, "stack");
 
         Error::Js {
             kind: kind,
             message: message,
+            file_name: file_name,
+            line_number: line_number,
+            stack: stack,
         }
     }
 }
@@ -561,8 +585,38 @@ unsafe fn get_string(ctx: *mut duktape_sys::duk_context, index: duktape_sys::duk
     String::from(str::from_utf8(slice).unwrap())
 }
 
-unsafe extern "C" fn fatal_handler(_: *mut os::raw::c_void,
-                                   msg_raw: *const os::raw::c_char) {
+unsafe fn get_string_property(ctx: *mut duktape_sys::duk_context,
+                              index: duktape_sys::duk_idx_t,
+                              name: &str)
+                              -> Option<String> {
+    let ffi_name = ffi::CString::new(name).unwrap();
+    if 1 == duktape_sys::duk_get_prop_string(ctx, index, ffi_name.as_ptr()) {
+        let result = get_string(ctx, -1);
+        duktape_sys::duk_pop(ctx);
+
+        Some((*result).to_owned())
+    } else {
+        duktape_sys::duk_pop(ctx);
+        None
+    }
+}
+
+unsafe fn get_number_property(ctx: *mut duktape_sys::duk_context,
+                              index: duktape_sys::duk_idx_t,
+                              name: &str)
+                              -> Option<f64> {
+    let ffi_name = ffi::CString::new(name).unwrap();
+    if 1 == duktape_sys::duk_get_prop_string(ctx, index, ffi_name.as_ptr()) {
+        let result = duktape_sys::duk_get_number(ctx, -1);
+        duktape_sys::duk_pop(ctx);
+        Some(result)
+    } else {
+        duktape_sys::duk_pop(ctx);
+        None
+    }
+}
+
+unsafe extern "C" fn fatal_handler(_: *mut os::raw::c_void, msg_raw: *const os::raw::c_char) {
     let msg = &*ffi::CStr::from_ptr(msg_raw).to_string_lossy();
     // TODO: No unwind support from C... but this "works" right now
     panic!("Duktape fatal error: {}", msg)
@@ -573,6 +627,14 @@ mod tests {
     use super::*;
 
     use std::collections;
+
+    fn clean_error<A>(result: &mut Result<A>) {
+        if let &mut Err(Error::Js { ref mut file_name, ref mut line_number, ref mut stack , .. }) = result {
+            *file_name = None;
+            *line_number = None;
+            *stack = None;
+        }
+    }
 
     #[test]
     fn eval_string_undefined() {
@@ -666,10 +728,14 @@ mod tests {
     #[test]
     fn eval_string_error_generic() {
         let ctx = Context::new();
-        let value = ctx.eval_string("throw 'foobar';");
+        let mut value = ctx.eval_string("throw 'foobar';");
+        clean_error(&mut value);
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Generic,
                        message: "foobar".to_owned(),
+                       file_name: None,
+                       line_number: None,
+                       stack: None,
                    }),
                    value);
         ctx.assert_clean();
@@ -678,10 +744,14 @@ mod tests {
     #[test]
     fn eval_string_error_error() {
         let ctx = Context::new();
-        let value = ctx.eval_string("throw new Error('xyz')");
+        let mut value = ctx.eval_string("throw new Error('xyz')");
+        clean_error(&mut value);
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Error,
-                       message: "Error: xyz".to_owned(),
+                       message: "xyz".to_owned(),
+                       file_name: None,
+                       line_number: None,
+                       stack: None,
                    }),
                    value);
         ctx.assert_clean();
@@ -690,10 +760,14 @@ mod tests {
     #[test]
     fn eval_string_eval_error() {
         let ctx = Context::new();
-        let value = ctx.eval_string("throw new EvalError('xyz')");
+        let mut value = ctx.eval_string("throw new EvalError('xyz')");
+        clean_error(&mut value);
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Eval,
-                       message: "EvalError: xyz".to_owned(),
+                       message: "xyz".to_owned(),
+                       file_name: None,
+                       line_number: None,
+                       stack: None,
                    }),
                    value);
         ctx.assert_clean();
@@ -702,10 +776,14 @@ mod tests {
     #[test]
     fn eval_string_range_error() {
         let ctx = Context::new();
-        let value = ctx.eval_string("throw new RangeError('xyz')");
+        let mut value = ctx.eval_string("throw new RangeError('xyz')");
+        clean_error(&mut value);
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Range,
-                       message: "RangeError: xyz".to_owned(),
+                       message: "xyz".to_owned(),
+                       file_name: None,
+                       line_number: None,
+                       stack: None,
                    }),
                    value);
         ctx.assert_clean();
@@ -714,10 +792,14 @@ mod tests {
     #[test]
     fn eval_string_reference_error() {
         let ctx = Context::new();
-        let value = ctx.eval_string("throw new ReferenceError('xyz')");
+        let mut value = ctx.eval_string("throw new ReferenceError('xyz')");
+        clean_error(&mut value);
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Reference,
-                       message: "ReferenceError: xyz".to_owned(),
+                       message: "xyz".to_owned(),
+                       file_name: None,
+                       line_number: None,
+                       stack: None,
                    }),
                    value);
         ctx.assert_clean();
@@ -726,10 +808,14 @@ mod tests {
     #[test]
     fn eval_string_syntax_error() {
         let ctx = Context::new();
-        let value = ctx.eval_string("throw new SyntaxError('xyz')");
+        let mut value = ctx.eval_string("throw new SyntaxError('xyz')");
+        clean_error(&mut value);
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Syntax,
-                       message: "SyntaxError: xyz".to_owned(),
+                       message: "xyz".to_owned(),
+                       file_name: None,
+                       line_number: None,
+                       stack: None,
                    }),
                    value);
         ctx.assert_clean();
@@ -738,10 +824,14 @@ mod tests {
     #[test]
     fn eval_string_type_error() {
         let ctx = Context::new();
-        let value = ctx.eval_string("throw new TypeError('xyz')");
+        let mut value = ctx.eval_string("throw new TypeError('xyz')");
+        clean_error(&mut value);
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Type,
-                       message: "TypeError: xyz".to_owned(),
+                       message: "xyz".to_owned(),
+                       file_name: None,
+                       line_number: None,
+                       stack: None,
                    }),
                    value);
         ctx.assert_clean();
@@ -750,10 +840,14 @@ mod tests {
     #[test]
     fn eval_string_uri_error() {
         let ctx = Context::new();
-        let value = ctx.eval_string("throw new URIError('xyz')");
+        let mut value = ctx.eval_string("throw new URIError('xyz')");
+        clean_error(&mut value);
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Uri,
-                       message: "URIError: xyz".to_owned(),
+                       message: "xyz".to_owned(),
+                       file_name: None,
+                       line_number: None,
+                       stack: None,
                    }),
                    value);
         ctx.assert_clean();
@@ -889,10 +983,14 @@ mod tests {
             throw 'a';
           }")
            .unwrap();
-        let value = ctx.call_global("foo", &[]);
+        let mut value = ctx.call_global("foo", &[]);
+        clean_error(&mut value);
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Generic,
                        message: "a".to_owned(),
+                       file_name: None,
+                       line_number: None,
+                       stack: None,
                    }),
                    value);
         ctx.assert_clean();
@@ -901,10 +999,14 @@ mod tests {
     #[test]
     fn call_non_existent() {
         let ctx = Context::new();
-        let value = ctx.call_global("foo", &[]);
+        let mut value = ctx.call_global("foo", &[]);
+        clean_error(&mut value);
         assert_eq!(Err(Error::Js {
                        kind: JsErrorKind::Type,
-                       message: "TypeError: undefined not callable".to_owned(),
+                       message: "undefined not callable".to_owned(),
+                       file_name: None,
+                       line_number: None,
+                       stack: None,
                    }),
                    value);
         ctx.assert_clean();
