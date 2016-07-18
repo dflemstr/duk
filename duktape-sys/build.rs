@@ -21,7 +21,10 @@ fn main() {
         config.define("DUK_OPT_DEBUG_WRITE", Some("__duktape_sys_debug_write"));
     }
 
+    config.include("duktape/src");
+    config.include("duktape/extras/logging");
     config.file("duktape/src/duktape.c");
+    config.file("duktape/extras/logging/duk_logging.c");
     config.file("src/wrapper.c");
 
     config.compile("libduktape.a");

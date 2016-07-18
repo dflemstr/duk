@@ -15,6 +15,8 @@ fn write_ffi() -> io::Result<()> {
 
     let bindings = bindgen::Builder::new()
         .header("src/wrapper.h")
+        .clang_arg("-Iduktape/src")
+        .clang_arg("-Iduktape/extras/logging")
         .match_pat("duk_config.h")
         .match_pat("duktape.h")
         .match_pat("wrapper.h")
@@ -43,7 +45,8 @@ fn write_wrapper_header() -> io::Result<()> {
     let mut header_file = try!(fs::File::create("src/wrapper.h"));
 
     try!(writeln!(header_file, "#pragma once"));
-    try!(writeln!(header_file, "#include \"../duktape/src/duktape.h\""));
+    try!(writeln!(header_file, "#include \"duktape.h\""));
+    try!(writeln!(header_file, "#include \"duk_logging.h\""));
 
     for &(t, n) in MACRO_CONSTANTS {
         try!(writeln!(header_file, ""));

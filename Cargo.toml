@@ -10,11 +10,13 @@ readme = "README.md"
 repository = "https://github.com/dflemstr/duk"
 version = "0.1.0"
 
+[dependencies]
+
 [dependencies.duktape-sys]
 path = "duktape-sys"
 version = "*"
 
 [features]
 debug = ["duktape-sys/debug"]
-trace = ["duktape-sys/trace"]
 spam = ["duktape-sys/spam"]
+trace = ["duktape-sys/trace"]
