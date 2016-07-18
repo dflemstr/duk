@@ -4,7 +4,7 @@ rust:
   - stable
 env:
   - FEATURES="--no-default-features"
-  - FEATURES="--features debug"
+  - FEATURES="--features debug" FEATURE_DOC=true
   - FEATURES="--features trace"
   - FEATURES="--features spam"
 sudo: false
@@ -24,3 +24,4 @@ deploy:
     on:
       repo: dflemstr/duk
       rust: stable
+      condition: $FEATURE_DOC = true
