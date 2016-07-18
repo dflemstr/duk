@@ -32,9 +32,12 @@ pub unsafe extern "C" fn __duktape_sys_debug_write(
 
     if log_enabled!(log_level) {
         let file_str = ::std::ffi::CStr::from_ptr(file).to_string_lossy();
-        let func_str = ::std::ffi::CStr::from_ptr(func).to_string_lossy();
-        let msg_str = ::std::ffi::CStr::from_ptr(msg).to_string_lossy();
 
-        log!(log_level, "{}.{}:{}: {}", file_str, func_str, line, msg_str);
+        let target = format!("{}:{}", module_path!(), file_str);
+        if log_enabled!(target: &target, log_level) {
+            let func_str = ::std::ffi::CStr::from_ptr(func).to_string_lossy();
+            let msg_str = ::std::ffi::CStr::from_ptr(msg).to_string_lossy();
+            log!(target: &target, log_level, "{}.{}:{}: {}", file_str, func_str, line, msg_str);
+        }
     }
 }
