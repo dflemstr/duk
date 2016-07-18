@@ -80,7 +80,6 @@ pub type duk_float_t = ::std::os::raw::c_float;
 pub type duk_double_t = ::std::os::raw::c_double;
 pub enum duk_hthread { }
 pub type duk_context = duk_hthread;
-pub type duk_file = FILE;
 pub type duk_c_function =
     ::std::option::Option<unsafe extern "C" fn(ctx: *mut duk_context)
                               -> duk_ret_t>;
@@ -102,8 +101,8 @@ pub type duk_free_function =
                                                ptr:
                                                    *mut ::std::os::raw::c_void)>;
 pub type duk_fatal_function =
-    ::std::option::Option<unsafe extern "C" fn(ctx: *mut duk_context,
-                                               code: duk_errcode_t,
+    ::std::option::Option<unsafe extern "C" fn(udata:
+                                                   *mut ::std::os::raw::c_void,
                                                msg:
                                                    *const ::std::os::raw::c_char)>;
 pub type duk_decode_char_function =
@@ -116,7 +115,9 @@ pub type duk_map_char_function =
                                                codepoint: duk_codepoint_t)
                               -> duk_codepoint_t>;
 pub type duk_safe_call_function =
-    ::std::option::Option<unsafe extern "C" fn(ctx: *mut duk_context)
+    ::std::option::Option<unsafe extern "C" fn(ctx: *mut duk_context,
+                                               udata:
+                                                   *mut ::std::os::raw::c_void)
                               -> duk_ret_t>;
 pub type duk_debug_read_function =
     ::std::option::Option<unsafe extern "C" fn(udata:
@@ -149,7 +150,8 @@ pub type duk_debug_request_function =
                                                nvalues: duk_idx_t)
                               -> duk_idx_t>;
 pub type duk_debug_detached_function =
-    ::std::option::Option<unsafe extern "C" fn(udata:
+    ::std::option::Option<unsafe extern "C" fn(ctx: *mut duk_context,
+                                               udata:
                                                    *mut ::std::os::raw::c_void)>;
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -183,6 +185,22 @@ pub struct duk_number_list_entry {
     pub value: duk_double_t,
 }
 impl ::std::default::Default for duk_number_list_entry {
+    fn default() -> Self { unsafe { ::std::mem::zeroed() } }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+#[derive(Debug)]
+pub struct duk_time_components {
+    pub year: duk_uint_t,
+    pub month: duk_uint_t,
+    pub day: duk_uint_t,
+    pub hour: duk_uint_t,
+    pub minute: duk_uint_t,
+    pub second: duk_uint_t,
+    pub weekday: duk_uint_t,
+    pub millisecond: duk_double_t,
+}
+impl ::std::default::Default for duk_time_components {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 #[repr(C)]
@@ -286,15 +304,7 @@ extern "C" {
     pub static DUK_DEFPROP_SET_CONFIGURABLE: duk_uint_t;
     pub static DUK_DEFPROP_CLEAR_CONFIGURABLE: duk_uint_t;
     pub static DUK_THREAD_NEW_GLOBAL_ENV: duk_uint_t;
-    pub static DUK_STRING_PUSH_SAFE: duk_uint_t;
     pub static DUK_ERR_NONE: duk_errcode_t;
-    pub static DUK_ERR_UNIMPLEMENTED_ERROR: duk_errcode_t;
-    pub static DUK_ERR_UNSUPPORTED_ERROR: duk_errcode_t;
-    pub static DUK_ERR_INTERNAL_ERROR: duk_errcode_t;
-    pub static DUK_ERR_ALLOC_ERROR: duk_errcode_t;
-    pub static DUK_ERR_ASSERTION_ERROR: duk_errcode_t;
-    pub static DUK_ERR_API_ERROR: duk_errcode_t;
-    pub static DUK_ERR_UNCAUGHT_ERROR: duk_errcode_t;
     pub static DUK_ERR_ERROR: duk_errcode_t;
     pub static DUK_ERR_EVAL_ERROR: duk_errcode_t;
     pub static DUK_ERR_RANGE_ERROR: duk_errcode_t;
@@ -302,13 +312,6 @@ extern "C" {
     pub static DUK_ERR_SYNTAX_ERROR: duk_errcode_t;
     pub static DUK_ERR_TYPE_ERROR: duk_errcode_t;
     pub static DUK_ERR_URI_ERROR: duk_errcode_t;
-    pub static DUK_RET_UNIMPLEMENTED_ERROR: duk_ret_t;
-    pub static DUK_RET_UNSUPPORTED_ERROR: duk_ret_t;
-    pub static DUK_RET_INTERNAL_ERROR: duk_ret_t;
-    pub static DUK_RET_ALLOC_ERROR: duk_ret_t;
-    pub static DUK_RET_ASSERTION_ERROR: duk_ret_t;
-    pub static DUK_RET_API_ERROR: duk_ret_t;
-    pub static DUK_RET_UNCAUGHT_ERROR: duk_ret_t;
     pub static DUK_RET_ERROR: duk_ret_t;
     pub static DUK_RET_EVAL_ERROR: duk_ret_t;
     pub static DUK_RET_RANGE_ERROR: duk_ret_t;
@@ -316,14 +319,11 @@ extern "C" {
     pub static DUK_RET_SYNTAX_ERROR: duk_ret_t;
     pub static DUK_RET_TYPE_ERROR: duk_ret_t;
     pub static DUK_RET_URI_ERROR: duk_ret_t;
-    pub static DUK_EXEC_SUCCESS: duk_ret_t;
-    pub static DUK_EXEC_ERROR: duk_ret_t;
-    pub static DUK_LOG_TRACE: duk_int_t;
-    pub static DUK_LOG_DEBUG: duk_int_t;
-    pub static DUK_LOG_INFO: duk_int_t;
-    pub static DUK_LOG_WARN: duk_int_t;
-    pub static DUK_LOG_ERROR: duk_int_t;
-    pub static DUK_LOG_FATAL: duk_int_t;
+    pub static DUK_EXEC_SUCCESS: duk_int_t;
+    pub static DUK_EXEC_ERROR: duk_int_t;
+    pub static DUK_LEVEL_DEBUG: ::std::os::raw::c_long;
+    pub static DUK_LEVEL_DDEBUG: ::std::os::raw::c_long;
+    pub static DUK_LEVEL_DDDEBUG: ::std::os::raw::c_long;
 }
 extern "C" {
     pub fn duk_create_heap(alloc_func: duk_alloc_function,
@@ -350,7 +350,7 @@ extern "C" {
                                     out_funcs: *mut duk_memory_functions);
     pub fn duk_gc(ctx: *mut duk_context, flags: duk_uint_t);
     pub fn duk_throw(ctx: *mut duk_context);
-    pub fn duk_fatal(ctx: *mut duk_context, err_code: duk_errcode_t,
+    pub fn duk_fatal(ctx: *mut duk_context,
                      err_msg: *const ::std::os::raw::c_char);
     pub fn duk_error_raw(ctx: *mut duk_context, err_code: duk_errcode_t,
                          filename: *const ::std::os::raw::c_char,
@@ -362,15 +362,15 @@ extern "C" {
                             fmt: *const ::std::os::raw::c_char, ap: va_list);
     pub fn duk_is_strict_call(ctx: *mut duk_context) -> duk_bool_t;
     pub fn duk_is_constructor_call(ctx: *mut duk_context) -> duk_bool_t;
-    pub fn duk_normalize_index(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_normalize_index(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_idx_t;
-    pub fn duk_require_normalize_index(ctx: *mut duk_context,
-                                       index: duk_idx_t) -> duk_idx_t;
-    pub fn duk_is_valid_index(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_require_normalize_index(ctx: *mut duk_context, idx: duk_idx_t)
+     -> duk_idx_t;
+    pub fn duk_is_valid_index(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_require_valid_index(ctx: *mut duk_context, index: duk_idx_t);
+    pub fn duk_require_valid_index(ctx: *mut duk_context, idx: duk_idx_t);
     pub fn duk_get_top(ctx: *mut duk_context) -> duk_idx_t;
-    pub fn duk_set_top(ctx: *mut duk_context, index: duk_idx_t);
+    pub fn duk_set_top(ctx: *mut duk_context, idx: duk_idx_t);
     pub fn duk_get_top_index(ctx: *mut duk_context) -> duk_idx_t;
     pub fn duk_require_top_index(ctx: *mut duk_context) -> duk_idx_t;
     pub fn duk_check_stack(ctx: *mut duk_context, extra: duk_idx_t)
@@ -379,16 +379,15 @@ extern "C" {
     pub fn duk_check_stack_top(ctx: *mut duk_context, top: duk_idx_t)
      -> duk_bool_t;
     pub fn duk_require_stack_top(ctx: *mut duk_context, top: duk_idx_t);
-    pub fn duk_swap(ctx: *mut duk_context, index1: duk_idx_t,
-                    index2: duk_idx_t);
-    pub fn duk_swap_top(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_dup(ctx: *mut duk_context, from_index: duk_idx_t);
+    pub fn duk_swap(ctx: *mut duk_context, idx1: duk_idx_t, idx2: duk_idx_t);
+    pub fn duk_swap_top(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_dup(ctx: *mut duk_context, from_idx: duk_idx_t);
     pub fn duk_dup_top(ctx: *mut duk_context);
-    pub fn duk_insert(ctx: *mut duk_context, to_index: duk_idx_t);
-    pub fn duk_replace(ctx: *mut duk_context, to_index: duk_idx_t);
-    pub fn duk_copy(ctx: *mut duk_context, from_index: duk_idx_t,
-                    to_index: duk_idx_t);
-    pub fn duk_remove(ctx: *mut duk_context, index: duk_idx_t);
+    pub fn duk_insert(ctx: *mut duk_context, to_idx: duk_idx_t);
+    pub fn duk_replace(ctx: *mut duk_context, to_idx: duk_idx_t);
+    pub fn duk_copy(ctx: *mut duk_context, from_idx: duk_idx_t,
+                    to_idx: duk_idx_t);
+    pub fn duk_remove(ctx: *mut duk_context, idx: duk_idx_t);
     pub fn duk_xcopymove_raw(to_ctx: *mut duk_context,
                              from_ctx: *mut duk_context, count: duk_idx_t,
                              is_copy: duk_bool_t);
@@ -414,10 +413,6 @@ extern "C" {
      -> *const ::std::os::raw::c_char;
     pub fn duk_push_vsprintf(ctx: *mut duk_context,
                              fmt: *const ::std::os::raw::c_char, ap: va_list)
-     -> *const ::std::os::raw::c_char;
-    pub fn duk_push_string_file_raw(ctx: *mut duk_context,
-                                    path: *const ::std::os::raw::c_char,
-                                    flags: duk_uint_t)
      -> *const ::std::os::raw::c_char;
     pub fn duk_push_this(ctx: *mut duk_context);
     pub fn duk_push_current_function(ctx: *mut duk_context);
@@ -462,190 +457,182 @@ extern "C" {
     pub fn duk_pop_n(ctx: *mut duk_context, count: duk_idx_t);
     pub fn duk_pop_2(ctx: *mut duk_context);
     pub fn duk_pop_3(ctx: *mut duk_context);
-    pub fn duk_get_type(ctx: *mut duk_context, index: duk_idx_t) -> duk_int_t;
-    pub fn duk_check_type(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_get_type(ctx: *mut duk_context, idx: duk_idx_t) -> duk_int_t;
+    pub fn duk_check_type(ctx: *mut duk_context, idx: duk_idx_t,
                           type_: duk_int_t) -> duk_bool_t;
-    pub fn duk_get_type_mask(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_get_type_mask(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_uint_t;
-    pub fn duk_check_type_mask(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_check_type_mask(ctx: *mut duk_context, idx: duk_idx_t,
                                mask: duk_uint_t) -> duk_bool_t;
-    pub fn duk_is_undefined(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_is_undefined(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_is_null(ctx: *mut duk_context, index: duk_idx_t) -> duk_bool_t;
-    pub fn duk_is_null_or_undefined(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_is_null(ctx: *mut duk_context, idx: duk_idx_t) -> duk_bool_t;
+    pub fn duk_is_null_or_undefined(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_is_boolean(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_is_boolean(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_is_number(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_is_number(ctx: *mut duk_context, idx: duk_idx_t) -> duk_bool_t;
+    pub fn duk_is_nan(ctx: *mut duk_context, idx: duk_idx_t) -> duk_bool_t;
+    pub fn duk_is_string(ctx: *mut duk_context, idx: duk_idx_t) -> duk_bool_t;
+    pub fn duk_is_object(ctx: *mut duk_context, idx: duk_idx_t) -> duk_bool_t;
+    pub fn duk_is_buffer(ctx: *mut duk_context, idx: duk_idx_t) -> duk_bool_t;
+    pub fn duk_is_pointer(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_is_nan(ctx: *mut duk_context, index: duk_idx_t) -> duk_bool_t;
-    pub fn duk_is_string(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_is_lightfunc(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_is_object(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_is_array(ctx: *mut duk_context, idx: duk_idx_t) -> duk_bool_t;
+    pub fn duk_is_function(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_is_buffer(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_is_c_function(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_is_pointer(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_is_ecmascript_function(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_is_lightfunc(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_is_bound_function(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_is_array(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_is_thread(ctx: *mut duk_context, idx: duk_idx_t) -> duk_bool_t;
+    pub fn duk_is_dynamic_buffer(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_is_function(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_is_fixed_buffer(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_is_c_function(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_is_external_buffer(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_is_ecmascript_function(ctx: *mut duk_context, index: duk_idx_t)
-     -> duk_bool_t;
-    pub fn duk_is_bound_function(ctx: *mut duk_context, index: duk_idx_t)
-     -> duk_bool_t;
-    pub fn duk_is_thread(ctx: *mut duk_context, index: duk_idx_t)
-     -> duk_bool_t;
-    pub fn duk_is_dynamic_buffer(ctx: *mut duk_context, index: duk_idx_t)
-     -> duk_bool_t;
-    pub fn duk_is_fixed_buffer(ctx: *mut duk_context, index: duk_idx_t)
-     -> duk_bool_t;
-    pub fn duk_is_external_buffer(ctx: *mut duk_context, index: duk_idx_t)
-     -> duk_bool_t;
-    pub fn duk_get_error_code(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_get_error_code(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_errcode_t;
-    pub fn duk_get_boolean(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_get_boolean(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_get_number(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_get_number(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_double_t;
-    pub fn duk_get_int(ctx: *mut duk_context, index: duk_idx_t) -> duk_int_t;
-    pub fn duk_get_uint(ctx: *mut duk_context, index: duk_idx_t)
-     -> duk_uint_t;
-    pub fn duk_get_string(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_get_int(ctx: *mut duk_context, idx: duk_idx_t) -> duk_int_t;
+    pub fn duk_get_uint(ctx: *mut duk_context, idx: duk_idx_t) -> duk_uint_t;
+    pub fn duk_get_string(ctx: *mut duk_context, idx: duk_idx_t)
      -> *const ::std::os::raw::c_char;
-    pub fn duk_get_lstring(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_get_lstring(ctx: *mut duk_context, idx: duk_idx_t,
                            out_len: *mut duk_size_t)
      -> *const ::std::os::raw::c_char;
-    pub fn duk_get_buffer(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_get_buffer(ctx: *mut duk_context, idx: duk_idx_t,
                           out_size: *mut duk_size_t)
      -> *mut ::std::os::raw::c_void;
-    pub fn duk_get_buffer_data(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_get_buffer_data(ctx: *mut duk_context, idx: duk_idx_t,
                                out_size: *mut duk_size_t)
      -> *mut ::std::os::raw::c_void;
-    pub fn duk_get_pointer(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_get_pointer(ctx: *mut duk_context, idx: duk_idx_t)
      -> *mut ::std::os::raw::c_void;
-    pub fn duk_get_c_function(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_get_c_function(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_c_function;
-    pub fn duk_get_context(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_get_context(ctx: *mut duk_context, idx: duk_idx_t)
      -> *mut duk_context;
-    pub fn duk_get_heapptr(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_get_heapptr(ctx: *mut duk_context, idx: duk_idx_t)
      -> *mut ::std::os::raw::c_void;
-    pub fn duk_get_length(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_get_length(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_size_t;
-    pub fn duk_require_undefined(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_require_null(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_require_boolean(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_require_undefined(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_require_null(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_require_boolean(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_require_number(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_require_number(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_double_t;
-    pub fn duk_require_int(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_require_int(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_int_t;
-    pub fn duk_require_uint(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_require_uint(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_uint_t;
-    pub fn duk_require_string(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_require_string(ctx: *mut duk_context, idx: duk_idx_t)
      -> *const ::std::os::raw::c_char;
-    pub fn duk_require_lstring(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_require_lstring(ctx: *mut duk_context, idx: duk_idx_t,
                                out_len: *mut duk_size_t)
      -> *const ::std::os::raw::c_char;
-    pub fn duk_require_buffer(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_require_buffer(ctx: *mut duk_context, idx: duk_idx_t,
                               out_size: *mut duk_size_t)
      -> *mut ::std::os::raw::c_void;
-    pub fn duk_require_buffer_data(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_require_buffer_data(ctx: *mut duk_context, idx: duk_idx_t,
                                    out_size: *mut duk_size_t)
      -> *mut ::std::os::raw::c_void;
-    pub fn duk_require_pointer(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_require_pointer(ctx: *mut duk_context, idx: duk_idx_t)
      -> *mut ::std::os::raw::c_void;
-    pub fn duk_require_c_function(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_require_c_function(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_c_function;
-    pub fn duk_require_context(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_require_context(ctx: *mut duk_context, idx: duk_idx_t)
      -> *mut duk_context;
-    pub fn duk_require_function(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_require_heapptr(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_require_function(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_require_heapptr(ctx: *mut duk_context, idx: duk_idx_t)
      -> *mut ::std::os::raw::c_void;
-    pub fn duk_to_undefined(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_to_null(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_to_boolean(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_to_undefined(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_to_null(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_to_boolean(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_to_number(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_to_number(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_double_t;
-    pub fn duk_to_int(ctx: *mut duk_context, index: duk_idx_t) -> duk_int_t;
-    pub fn duk_to_uint(ctx: *mut duk_context, index: duk_idx_t) -> duk_uint_t;
-    pub fn duk_to_int32(ctx: *mut duk_context, index: duk_idx_t)
-     -> duk_int32_t;
-    pub fn duk_to_uint32(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_to_int(ctx: *mut duk_context, idx: duk_idx_t) -> duk_int_t;
+    pub fn duk_to_uint(ctx: *mut duk_context, idx: duk_idx_t) -> duk_uint_t;
+    pub fn duk_to_int32(ctx: *mut duk_context, idx: duk_idx_t) -> duk_int32_t;
+    pub fn duk_to_uint32(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_uint32_t;
-    pub fn duk_to_uint16(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_to_uint16(ctx: *mut duk_context, idx: duk_idx_t)
      -> duk_uint16_t;
-    pub fn duk_to_string(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_to_string(ctx: *mut duk_context, idx: duk_idx_t)
      -> *const ::std::os::raw::c_char;
-    pub fn duk_to_lstring(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_to_lstring(ctx: *mut duk_context, idx: duk_idx_t,
                           out_len: *mut duk_size_t)
      -> *const ::std::os::raw::c_char;
-    pub fn duk_to_buffer_raw(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_to_buffer_raw(ctx: *mut duk_context, idx: duk_idx_t,
                              out_size: *mut duk_size_t, flags: duk_uint_t)
      -> *mut ::std::os::raw::c_void;
-    pub fn duk_to_pointer(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_to_pointer(ctx: *mut duk_context, idx: duk_idx_t)
      -> *mut ::std::os::raw::c_void;
-    pub fn duk_to_object(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_to_defaultvalue(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_to_object(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_to_defaultvalue(ctx: *mut duk_context, idx: duk_idx_t,
                                hint: duk_int_t);
-    pub fn duk_to_primitive(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_to_primitive(ctx: *mut duk_context, idx: duk_idx_t,
                             hint: duk_int_t);
-    pub fn duk_safe_to_lstring(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_safe_to_lstring(ctx: *mut duk_context, idx: duk_idx_t,
                                out_len: *mut duk_size_t)
      -> *const ::std::os::raw::c_char;
-    pub fn duk_base64_encode(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_base64_encode(ctx: *mut duk_context, idx: duk_idx_t)
      -> *const ::std::os::raw::c_char;
-    pub fn duk_base64_decode(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_hex_encode(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_base64_decode(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_hex_encode(ctx: *mut duk_context, idx: duk_idx_t)
      -> *const ::std::os::raw::c_char;
-    pub fn duk_hex_decode(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_json_encode(ctx: *mut duk_context, index: duk_idx_t)
+    pub fn duk_hex_decode(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_json_encode(ctx: *mut duk_context, idx: duk_idx_t)
      -> *const ::std::os::raw::c_char;
-    pub fn duk_json_decode(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_resize_buffer(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_json_decode(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_resize_buffer(ctx: *mut duk_context, idx: duk_idx_t,
                              new_size: duk_size_t)
      -> *mut ::std::os::raw::c_void;
-    pub fn duk_steal_buffer(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_steal_buffer(ctx: *mut duk_context, idx: duk_idx_t,
                             out_size: *mut duk_size_t)
      -> *mut ::std::os::raw::c_void;
-    pub fn duk_config_buffer(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_config_buffer(ctx: *mut duk_context, idx: duk_idx_t,
                              ptr: *mut ::std::os::raw::c_void,
                              len: duk_size_t);
-    pub fn duk_get_prop(ctx: *mut duk_context, obj_index: duk_idx_t)
+    pub fn duk_get_prop(ctx: *mut duk_context, obj_idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_get_prop_string(ctx: *mut duk_context, obj_index: duk_idx_t,
+    pub fn duk_get_prop_string(ctx: *mut duk_context, obj_idx: duk_idx_t,
                                key: *const ::std::os::raw::c_char)
      -> duk_bool_t;
-    pub fn duk_get_prop_index(ctx: *mut duk_context, obj_index: duk_idx_t,
-                              arr_index: duk_uarridx_t) -> duk_bool_t;
-    pub fn duk_put_prop(ctx: *mut duk_context, obj_index: duk_idx_t)
+    pub fn duk_get_prop_index(ctx: *mut duk_context, obj_idx: duk_idx_t,
+                              arr_idx: duk_uarridx_t) -> duk_bool_t;
+    pub fn duk_put_prop(ctx: *mut duk_context, obj_idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_put_prop_string(ctx: *mut duk_context, obj_index: duk_idx_t,
+    pub fn duk_put_prop_string(ctx: *mut duk_context, obj_idx: duk_idx_t,
                                key: *const ::std::os::raw::c_char)
      -> duk_bool_t;
-    pub fn duk_put_prop_index(ctx: *mut duk_context, obj_index: duk_idx_t,
-                              arr_index: duk_uarridx_t) -> duk_bool_t;
-    pub fn duk_del_prop(ctx: *mut duk_context, obj_index: duk_idx_t)
+    pub fn duk_put_prop_index(ctx: *mut duk_context, obj_idx: duk_idx_t,
+                              arr_idx: duk_uarridx_t) -> duk_bool_t;
+    pub fn duk_del_prop(ctx: *mut duk_context, obj_idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_del_prop_string(ctx: *mut duk_context, obj_index: duk_idx_t,
+    pub fn duk_del_prop_string(ctx: *mut duk_context, obj_idx: duk_idx_t,
                                key: *const ::std::os::raw::c_char)
      -> duk_bool_t;
-    pub fn duk_del_prop_index(ctx: *mut duk_context, obj_index: duk_idx_t,
-                              arr_index: duk_uarridx_t) -> duk_bool_t;
-    pub fn duk_has_prop(ctx: *mut duk_context, obj_index: duk_idx_t)
+    pub fn duk_del_prop_index(ctx: *mut duk_context, obj_idx: duk_idx_t,
+                              arr_idx: duk_uarridx_t) -> duk_bool_t;
+    pub fn duk_has_prop(ctx: *mut duk_context, obj_idx: duk_idx_t)
      -> duk_bool_t;
-    pub fn duk_has_prop_string(ctx: *mut duk_context, obj_index: duk_idx_t,
+    pub fn duk_has_prop_string(ctx: *mut duk_context, obj_idx: duk_idx_t,
                                key: *const ::std::os::raw::c_char)
      -> duk_bool_t;
-    pub fn duk_has_prop_index(ctx: *mut duk_context, obj_index: duk_idx_t,
-                              arr_index: duk_uarridx_t) -> duk_bool_t;
-    pub fn duk_def_prop(ctx: *mut duk_context, obj_index: duk_idx_t,
+    pub fn duk_has_prop_index(ctx: *mut duk_context, obj_idx: duk_idx_t,
+                              arr_idx: duk_uarridx_t) -> duk_bool_t;
+    pub fn duk_def_prop(ctx: *mut duk_context, obj_idx: duk_idx_t,
                         flags: duk_uint_t);
     pub fn duk_get_global_string(ctx: *mut duk_context,
                                  key: *const ::std::os::raw::c_char)
@@ -653,62 +640,58 @@ extern "C" {
     pub fn duk_put_global_string(ctx: *mut duk_context,
                                  key: *const ::std::os::raw::c_char)
      -> duk_bool_t;
-    pub fn duk_get_prototype(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_set_prototype(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_get_finalizer(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_set_finalizer(ctx: *mut duk_context, index: duk_idx_t);
+    pub fn duk_get_prototype(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_set_prototype(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_get_finalizer(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_set_finalizer(ctx: *mut duk_context, idx: duk_idx_t);
     pub fn duk_set_global_object(ctx: *mut duk_context);
-    pub fn duk_get_magic(ctx: *mut duk_context, index: duk_idx_t)
-     -> duk_int_t;
-    pub fn duk_set_magic(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_get_magic(ctx: *mut duk_context, idx: duk_idx_t) -> duk_int_t;
+    pub fn duk_set_magic(ctx: *mut duk_context, idx: duk_idx_t,
                          magic: duk_int_t);
     pub fn duk_get_current_magic(ctx: *mut duk_context) -> duk_int_t;
-    pub fn duk_put_function_list(ctx: *mut duk_context, obj_index: duk_idx_t,
+    pub fn duk_put_function_list(ctx: *mut duk_context, obj_idx: duk_idx_t,
                                  funcs: *const duk_function_list_entry);
-    pub fn duk_put_number_list(ctx: *mut duk_context, obj_index: duk_idx_t,
+    pub fn duk_put_number_list(ctx: *mut duk_context, obj_idx: duk_idx_t,
                                numbers: *const duk_number_list_entry);
-    pub fn duk_get_var(ctx: *mut duk_context);
-    pub fn duk_put_var(ctx: *mut duk_context);
-    pub fn duk_del_var(ctx: *mut duk_context) -> duk_bool_t;
-    pub fn duk_has_var(ctx: *mut duk_context) -> duk_bool_t;
-    pub fn duk_compact(ctx: *mut duk_context, obj_index: duk_idx_t);
-    pub fn duk_enum(ctx: *mut duk_context, obj_index: duk_idx_t,
+    pub fn duk_compact(ctx: *mut duk_context, obj_idx: duk_idx_t);
+    pub fn duk_enum(ctx: *mut duk_context, obj_idx: duk_idx_t,
                     enum_flags: duk_uint_t);
-    pub fn duk_next(ctx: *mut duk_context, enum_index: duk_idx_t,
+    pub fn duk_next(ctx: *mut duk_context, enum_idx: duk_idx_t,
                     get_value: duk_bool_t) -> duk_bool_t;
     pub fn duk_concat(ctx: *mut duk_context, count: duk_idx_t);
     pub fn duk_join(ctx: *mut duk_context, count: duk_idx_t);
-    pub fn duk_decode_string(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_decode_string(ctx: *mut duk_context, idx: duk_idx_t,
                              callback: duk_decode_char_function,
                              udata: *mut ::std::os::raw::c_void);
-    pub fn duk_map_string(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_map_string(ctx: *mut duk_context, idx: duk_idx_t,
                           callback: duk_map_char_function,
                           udata: *mut ::std::os::raw::c_void);
-    pub fn duk_substring(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_substring(ctx: *mut duk_context, idx: duk_idx_t,
                          start_char_offset: duk_size_t,
                          end_char_offset: duk_size_t);
-    pub fn duk_trim(ctx: *mut duk_context, index: duk_idx_t);
-    pub fn duk_char_code_at(ctx: *mut duk_context, index: duk_idx_t,
+    pub fn duk_trim(ctx: *mut duk_context, idx: duk_idx_t);
+    pub fn duk_char_code_at(ctx: *mut duk_context, idx: duk_idx_t,
                             char_offset: duk_size_t) -> duk_codepoint_t;
-    pub fn duk_equals(ctx: *mut duk_context, index1: duk_idx_t,
-                      index2: duk_idx_t) -> duk_bool_t;
-    pub fn duk_strict_equals(ctx: *mut duk_context, index1: duk_idx_t,
-                             index2: duk_idx_t) -> duk_bool_t;
-    pub fn duk_instanceof(ctx: *mut duk_context, index1: duk_idx_t,
-                          index2: duk_idx_t) -> duk_bool_t;
+    pub fn duk_equals(ctx: *mut duk_context, idx1: duk_idx_t, idx2: duk_idx_t)
+     -> duk_bool_t;
+    pub fn duk_strict_equals(ctx: *mut duk_context, idx1: duk_idx_t,
+                             idx2: duk_idx_t) -> duk_bool_t;
+    pub fn duk_instanceof(ctx: *mut duk_context, idx1: duk_idx_t,
+                          idx2: duk_idx_t) -> duk_bool_t;
     pub fn duk_call(ctx: *mut duk_context, nargs: duk_idx_t);
     pub fn duk_call_method(ctx: *mut duk_context, nargs: duk_idx_t);
-    pub fn duk_call_prop(ctx: *mut duk_context, obj_index: duk_idx_t,
+    pub fn duk_call_prop(ctx: *mut duk_context, obj_idx: duk_idx_t,
                          nargs: duk_idx_t);
     pub fn duk_pcall(ctx: *mut duk_context, nargs: duk_idx_t) -> duk_int_t;
     pub fn duk_pcall_method(ctx: *mut duk_context, nargs: duk_idx_t)
      -> duk_int_t;
-    pub fn duk_pcall_prop(ctx: *mut duk_context, obj_index: duk_idx_t,
+    pub fn duk_pcall_prop(ctx: *mut duk_context, obj_idx: duk_idx_t,
                           nargs: duk_idx_t) -> duk_int_t;
     pub fn duk_new(ctx: *mut duk_context, nargs: duk_idx_t);
     pub fn duk_pnew(ctx: *mut duk_context, nargs: duk_idx_t) -> duk_int_t;
     pub fn duk_safe_call(ctx: *mut duk_context, func: duk_safe_call_function,
-                         nargs: duk_idx_t, nrets: duk_idx_t) -> duk_int_t;
+                         udata: *mut ::std::os::raw::c_void, nargs: duk_idx_t,
+                         nrets: duk_idx_t) -> duk_int_t;
     pub fn duk_eval_raw(ctx: *mut duk_context,
                         src_buffer: *const ::std::os::raw::c_char,
                         src_length: duk_size_t, flags: duk_uint_t)
@@ -719,28 +702,28 @@ extern "C" {
      -> duk_int_t;
     pub fn duk_dump_function(ctx: *mut duk_context);
     pub fn duk_load_function(ctx: *mut duk_context);
-    pub fn duk_log(ctx: *mut duk_context, level: duk_int_t,
-                   fmt: *const ::std::os::raw::c_char, ...);
-    pub fn duk_log_va(ctx: *mut duk_context, level: duk_int_t,
-                      fmt: *const ::std::os::raw::c_char, ap: va_list);
     pub fn duk_push_context_dump(ctx: *mut duk_context);
-    pub fn duk_debugger_attach_custom(ctx: *mut duk_context,
-                                      read_cb: duk_debug_read_function,
-                                      write_cb: duk_debug_write_function,
-                                      peek_cb: duk_debug_peek_function,
-                                      read_flush_cb:
-                                          duk_debug_read_flush_function,
-                                      write_flush_cb:
-                                          duk_debug_write_flush_function,
-                                      request_cb: duk_debug_request_function,
-                                      detached_cb:
-                                          duk_debug_detached_function,
-                                      udata: *mut ::std::os::raw::c_void);
+    pub fn duk_debugger_attach(ctx: *mut duk_context,
+                               read_cb: duk_debug_read_function,
+                               write_cb: duk_debug_write_function,
+                               peek_cb: duk_debug_peek_function,
+                               read_flush_cb: duk_debug_read_flush_function,
+                               write_flush_cb: duk_debug_write_flush_function,
+                               request_cb: duk_debug_request_function,
+                               detached_cb: duk_debug_detached_function,
+                               udata: *mut ::std::os::raw::c_void);
     pub fn duk_debugger_detach(ctx: *mut duk_context);
     pub fn duk_debugger_cooperate(ctx: *mut duk_context);
     pub fn duk_debugger_notify(ctx: *mut duk_context, nvalues: duk_idx_t)
      -> duk_bool_t;
     pub fn duk_debugger_pause(ctx: *mut duk_context);
+    pub fn duk_get_now(ctx: *mut duk_context) -> duk_double_t;
+    pub fn duk_time_to_components(ctx: *mut duk_context,
+                                  timeval: duk_double_t,
+                                  comp: *mut duk_time_components);
+    pub fn duk_components_to_time(ctx: *mut duk_context,
+                                  comp: *mut duk_time_components)
+     -> duk_double_t;
     pub fn duk_create_heap_default() -> *mut duk_context;
     pub fn duk_xmove_top(to_ctx: *mut duk_context, from_ctx: *mut duk_context,
                          count: duk_idx_t);

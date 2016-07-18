@@ -96,21 +96,6 @@ pub enum JsErrorKind {
     /// the user does `throw 3.14;`.
     Generic,
 
-    /// Duktape internal.
-    Unimplemented,
-    /// Duktape internal.
-    Unsupported,
-    /// Duktape internal.
-    Internal,
-    /// Duktape internal.
-    Alloc,
-    /// Duktape internal.
-    Assertion,
-    /// Duktape internal.
-    Api,
-    /// Duktape internal.
-    Uncaught,
-
     /// An error that's an instance of `Error`.
     Error,
     /// An error that's an instance of `EvalError`.
@@ -549,20 +534,6 @@ impl JsErrorKind {
     unsafe fn from_raw(e: duktape_sys::duk_errcode_t) -> JsErrorKind {
         if e == duktape_sys::DUK_ERR_NONE {
             JsErrorKind::Generic
-        } else if e == duktape_sys::DUK_ERR_UNIMPLEMENTED_ERROR {
-            JsErrorKind::Unimplemented
-        } else if e == duktape_sys::DUK_ERR_UNSUPPORTED_ERROR {
-            JsErrorKind::Unsupported
-        } else if e == duktape_sys::DUK_ERR_INTERNAL_ERROR {
-            JsErrorKind::Internal
-        } else if e == duktape_sys::DUK_ERR_ALLOC_ERROR {
-            JsErrorKind::Alloc
-        } else if e == duktape_sys::DUK_ERR_ASSERTION_ERROR {
-            JsErrorKind::Assertion
-        } else if e == duktape_sys::DUK_ERR_API_ERROR {
-            JsErrorKind::Api
-        } else if e == duktape_sys::DUK_ERR_UNCAUGHT_ERROR {
-            JsErrorKind::Uncaught
         } else if e == duktape_sys::DUK_ERR_ERROR {
             JsErrorKind::Error
         } else if e == duktape_sys::DUK_ERR_EVAL_ERROR {
@@ -590,18 +561,11 @@ unsafe fn get_string(ctx: *mut duktape_sys::duk_context, index: duktape_sys::duk
     String::from(str::from_utf8(slice).unwrap())
 }
 
-unsafe extern "C" fn fatal_handler(ctx: *mut duktape_sys::duk_context,
-                                   code: duktape_sys::duk_errcode_t,
+unsafe extern "C" fn fatal_handler(_: *mut os::raw::c_void,
                                    msg_raw: *const os::raw::c_char) {
     let msg = &*ffi::CStr::from_ptr(msg_raw).to_string_lossy();
-    duktape_sys::duk_push_context_dump(ctx);
-    let context_dump = get_string(ctx, -1);
-    duktape_sys::duk_pop(ctx);
     // TODO: No unwind support from C... but this "works" right now
-    panic!("Duktape fatal error (code {}): {}\n{}",
-           code,
-           msg,
-           context_dump)
+    panic!("Duktape fatal error: {}", msg)
 }
 
 #[cfg(test)]

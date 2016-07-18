@@ -15,12 +15,16 @@ gcc = "0.3.28"
 
 [dependencies]
 libc = "*"
-log = "0.3.6"
+
+[dependencies.log]
+optional = true
+version = "*"
 
 [dev-dependencies]
 bindgen = "0.18.0"
 
 [features]
-debug = []
-trace = []
-spam = []
+default = ["debug"]
+debug = ["log"]
+trace = ["log"]
+spam = ["log"]

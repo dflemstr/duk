@@ -390,59 +390,11 @@ const duk_uint_t DUK_THREAD_NEW_GLOBAL_ENV =
 #pragma pop_macro("DUK_THREAD_NEW_GLOBAL_ENV")
   DUK_THREAD_NEW_GLOBAL_ENV;
 
-#pragma push_macro("DUK_STRING_PUSH_SAFE")
-#undef DUK_STRING_PUSH_SAFE
-const duk_uint_t DUK_STRING_PUSH_SAFE =
-#pragma pop_macro("DUK_STRING_PUSH_SAFE")
-  DUK_STRING_PUSH_SAFE;
-
 #pragma push_macro("DUK_ERR_NONE")
 #undef DUK_ERR_NONE
 const duk_errcode_t DUK_ERR_NONE =
 #pragma pop_macro("DUK_ERR_NONE")
   DUK_ERR_NONE;
-
-#pragma push_macro("DUK_ERR_UNIMPLEMENTED_ERROR")
-#undef DUK_ERR_UNIMPLEMENTED_ERROR
-const duk_errcode_t DUK_ERR_UNIMPLEMENTED_ERROR =
-#pragma pop_macro("DUK_ERR_UNIMPLEMENTED_ERROR")
-  DUK_ERR_UNIMPLEMENTED_ERROR;
-
-#pragma push_macro("DUK_ERR_UNSUPPORTED_ERROR")
-#undef DUK_ERR_UNSUPPORTED_ERROR
-const duk_errcode_t DUK_ERR_UNSUPPORTED_ERROR =
-#pragma pop_macro("DUK_ERR_UNSUPPORTED_ERROR")
-  DUK_ERR_UNSUPPORTED_ERROR;
-
-#pragma push_macro("DUK_ERR_INTERNAL_ERROR")
-#undef DUK_ERR_INTERNAL_ERROR
-const duk_errcode_t DUK_ERR_INTERNAL_ERROR =
-#pragma pop_macro("DUK_ERR_INTERNAL_ERROR")
-  DUK_ERR_INTERNAL_ERROR;
-
-#pragma push_macro("DUK_ERR_ALLOC_ERROR")
-#undef DUK_ERR_ALLOC_ERROR
-const duk_errcode_t DUK_ERR_ALLOC_ERROR =
-#pragma pop_macro("DUK_ERR_ALLOC_ERROR")
-  DUK_ERR_ALLOC_ERROR;
-
-#pragma push_macro("DUK_ERR_ASSERTION_ERROR")
-#undef DUK_ERR_ASSERTION_ERROR
-const duk_errcode_t DUK_ERR_ASSERTION_ERROR =
-#pragma pop_macro("DUK_ERR_ASSERTION_ERROR")
-  DUK_ERR_ASSERTION_ERROR;
-
-#pragma push_macro("DUK_ERR_API_ERROR")
-#undef DUK_ERR_API_ERROR
-const duk_errcode_t DUK_ERR_API_ERROR =
-#pragma pop_macro("DUK_ERR_API_ERROR")
-  DUK_ERR_API_ERROR;
-
-#pragma push_macro("DUK_ERR_UNCAUGHT_ERROR")
-#undef DUK_ERR_UNCAUGHT_ERROR
-const duk_errcode_t DUK_ERR_UNCAUGHT_ERROR =
-#pragma pop_macro("DUK_ERR_UNCAUGHT_ERROR")
-  DUK_ERR_UNCAUGHT_ERROR;
 
 #pragma push_macro("DUK_ERR_ERROR")
 #undef DUK_ERR_ERROR
@@ -485,48 +437,6 @@ const duk_errcode_t DUK_ERR_TYPE_ERROR =
 const duk_errcode_t DUK_ERR_URI_ERROR =
 #pragma pop_macro("DUK_ERR_URI_ERROR")
   DUK_ERR_URI_ERROR;
-
-#pragma push_macro("DUK_RET_UNIMPLEMENTED_ERROR")
-#undef DUK_RET_UNIMPLEMENTED_ERROR
-const duk_ret_t DUK_RET_UNIMPLEMENTED_ERROR =
-#pragma pop_macro("DUK_RET_UNIMPLEMENTED_ERROR")
-  DUK_RET_UNIMPLEMENTED_ERROR;
-
-#pragma push_macro("DUK_RET_UNSUPPORTED_ERROR")
-#undef DUK_RET_UNSUPPORTED_ERROR
-const duk_ret_t DUK_RET_UNSUPPORTED_ERROR =
-#pragma pop_macro("DUK_RET_UNSUPPORTED_ERROR")
-  DUK_RET_UNSUPPORTED_ERROR;
-
-#pragma push_macro("DUK_RET_INTERNAL_ERROR")
-#undef DUK_RET_INTERNAL_ERROR
-const duk_ret_t DUK_RET_INTERNAL_ERROR =
-#pragma pop_macro("DUK_RET_INTERNAL_ERROR")
-  DUK_RET_INTERNAL_ERROR;
-
-#pragma push_macro("DUK_RET_ALLOC_ERROR")
-#undef DUK_RET_ALLOC_ERROR
-const duk_ret_t DUK_RET_ALLOC_ERROR =
-#pragma pop_macro("DUK_RET_ALLOC_ERROR")
-  DUK_RET_ALLOC_ERROR;
-
-#pragma push_macro("DUK_RET_ASSERTION_ERROR")
-#undef DUK_RET_ASSERTION_ERROR
-const duk_ret_t DUK_RET_ASSERTION_ERROR =
-#pragma pop_macro("DUK_RET_ASSERTION_ERROR")
-  DUK_RET_ASSERTION_ERROR;
-
-#pragma push_macro("DUK_RET_API_ERROR")
-#undef DUK_RET_API_ERROR
-const duk_ret_t DUK_RET_API_ERROR =
-#pragma pop_macro("DUK_RET_API_ERROR")
-  DUK_RET_API_ERROR;
-
-#pragma push_macro("DUK_RET_UNCAUGHT_ERROR")
-#undef DUK_RET_UNCAUGHT_ERROR
-const duk_ret_t DUK_RET_UNCAUGHT_ERROR =
-#pragma pop_macro("DUK_RET_UNCAUGHT_ERROR")
-  DUK_RET_UNCAUGHT_ERROR;
 
 #pragma push_macro("DUK_RET_ERROR")
 #undef DUK_RET_ERROR
@@ -572,51 +482,33 @@ const duk_ret_t DUK_RET_URI_ERROR =
 
 #pragma push_macro("DUK_EXEC_SUCCESS")
 #undef DUK_EXEC_SUCCESS
-const duk_ret_t DUK_EXEC_SUCCESS =
+const duk_int_t DUK_EXEC_SUCCESS =
 #pragma pop_macro("DUK_EXEC_SUCCESS")
   DUK_EXEC_SUCCESS;
 
 #pragma push_macro("DUK_EXEC_ERROR")
 #undef DUK_EXEC_ERROR
-const duk_ret_t DUK_EXEC_ERROR =
+const duk_int_t DUK_EXEC_ERROR =
 #pragma pop_macro("DUK_EXEC_ERROR")
   DUK_EXEC_ERROR;
 
-#pragma push_macro("DUK_LOG_TRACE")
-#undef DUK_LOG_TRACE
-const duk_int_t DUK_LOG_TRACE =
-#pragma pop_macro("DUK_LOG_TRACE")
-  DUK_LOG_TRACE;
+#pragma push_macro("DUK_LEVEL_DEBUG")
+#undef DUK_LEVEL_DEBUG
+const long DUK_LEVEL_DEBUG =
+#pragma pop_macro("DUK_LEVEL_DEBUG")
+  DUK_LEVEL_DEBUG;
 
-#pragma push_macro("DUK_LOG_DEBUG")
-#undef DUK_LOG_DEBUG
-const duk_int_t DUK_LOG_DEBUG =
-#pragma pop_macro("DUK_LOG_DEBUG")
-  DUK_LOG_DEBUG;
+#pragma push_macro("DUK_LEVEL_DDEBUG")
+#undef DUK_LEVEL_DDEBUG
+const long DUK_LEVEL_DDEBUG =
+#pragma pop_macro("DUK_LEVEL_DDEBUG")
+  DUK_LEVEL_DDEBUG;
 
-#pragma push_macro("DUK_LOG_INFO")
-#undef DUK_LOG_INFO
-const duk_int_t DUK_LOG_INFO =
-#pragma pop_macro("DUK_LOG_INFO")
-  DUK_LOG_INFO;
-
-#pragma push_macro("DUK_LOG_WARN")
-#undef DUK_LOG_WARN
-const duk_int_t DUK_LOG_WARN =
-#pragma pop_macro("DUK_LOG_WARN")
-  DUK_LOG_WARN;
-
-#pragma push_macro("DUK_LOG_ERROR")
-#undef DUK_LOG_ERROR
-const duk_int_t DUK_LOG_ERROR =
-#pragma pop_macro("DUK_LOG_ERROR")
-  DUK_LOG_ERROR;
-
-#pragma push_macro("DUK_LOG_FATAL")
-#undef DUK_LOG_FATAL
-const duk_int_t DUK_LOG_FATAL =
-#pragma pop_macro("DUK_LOG_FATAL")
-  DUK_LOG_FATAL;
+#pragma push_macro("DUK_LEVEL_DDDEBUG")
+#undef DUK_LEVEL_DDDEBUG
+const long DUK_LEVEL_DDDEBUG =
+#pragma pop_macro("DUK_LEVEL_DDDEBUG")
+  DUK_LEVEL_DDDEBUG;
 
 #pragma push_macro("duk_create_heap_default")
 #undef duk_create_heap_default

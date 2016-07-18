@@ -129,13 +129,19 @@ pub type va_list = [u8; 0];
 
 const MACRO_CONSTANTS: &'static [(&'static str, &'static str)] = &[
     ("duk_uint_t", "DUK_VERSION"),
+
     ("char *const", "DUK_GIT_COMMIT"),
     ("char *const", "DUK_GIT_DESCRIBE"),
     ("char *const", "DUK_GIT_BRANCH"),
+
     ("duk_uint_t", "DUK_DEBUG_PROTOCOL_VERSION"),
+
     ("duk_idx_t", "DUK_INVALID_INDEX"),
+
     ("duk_int_t", "DUK_VARARGS"),
+
     ("duk_size_t", "DUK_API_ENTRY_STACK"),
+
     ("duk_int_t", "DUK_TYPE_MIN"),
     ("duk_int_t", "DUK_TYPE_NONE"),
     ("duk_int_t", "DUK_TYPE_UNDEFINED"),
@@ -148,6 +154,7 @@ const MACRO_CONSTANTS: &'static [(&'static str, &'static str)] = &[
     ("duk_int_t", "DUK_TYPE_POINTER"),
     ("duk_int_t", "DUK_TYPE_LIGHTFUNC"),
     ("duk_int_t", "DUK_TYPE_MAX"),
+
     ("duk_uint_t", "DUK_TYPE_MASK_NONE"),
     ("duk_uint_t", "DUK_TYPE_MASK_UNDEFINED"),
     ("duk_uint_t", "DUK_TYPE_MASK_NULL"),
@@ -159,15 +166,18 @@ const MACRO_CONSTANTS: &'static [(&'static str, &'static str)] = &[
     ("duk_uint_t", "DUK_TYPE_MASK_POINTER"),
     ("duk_uint_t", "DUK_TYPE_MASK_LIGHTFUNC"),
     ("duk_uint_t", "DUK_TYPE_MASK_THROW"),
+
     ("duk_int_t", "DUK_HINT_NONE"),
     ("duk_int_t", "DUK_HINT_STRING"),
     ("duk_int_t", "DUK_HINT_NUMBER"),
+
     ("duk_uint_t", "DUK_ENUM_INCLUDE_NONENUMERABLE"),
     ("duk_uint_t", "DUK_ENUM_INCLUDE_INTERNAL"),
     ("duk_uint_t", "DUK_ENUM_OWN_PROPERTIES_ONLY"),
     ("duk_uint_t", "DUK_ENUM_ARRAY_INDICES_ONLY"),
     ("duk_uint_t", "DUK_ENUM_SORT_ARRAY_INDICES"),
     ("duk_uint_t", "DUK_ENUM_NO_PROXY_BEHAVIOR"),
+
     ("duk_uint_t", "DUK_COMPILE_EVAL"),
     ("duk_uint_t", "DUK_COMPILE_FUNCTION"),
     ("duk_uint_t", "DUK_COMPILE_STRICT"),
@@ -176,6 +186,7 @@ const MACRO_CONSTANTS: &'static [(&'static str, &'static str)] = &[
     ("duk_uint_t", "DUK_COMPILE_NOSOURCE"),
     ("duk_uint_t", "DUK_COMPILE_STRLEN"),
     ("duk_uint_t", "DUK_COMPILE_NOFILENAME"),
+
     ("duk_uint_t", "DUK_DEFPROP_WRITABLE"),
     ("duk_uint_t", "DUK_DEFPROP_ENUMERABLE"),
     ("duk_uint_t", "DUK_DEFPROP_CONFIGURABLE"),
@@ -192,16 +203,10 @@ const MACRO_CONSTANTS: &'static [(&'static str, &'static str)] = &[
     ("duk_uint_t", "DUK_DEFPROP_CLEAR_ENUMERABLE"),
     ("duk_uint_t", "DUK_DEFPROP_SET_CONFIGURABLE"),
     ("duk_uint_t", "DUK_DEFPROP_CLEAR_CONFIGURABLE"),
+
     ("duk_uint_t", "DUK_THREAD_NEW_GLOBAL_ENV"),
-    ("duk_uint_t", "DUK_STRING_PUSH_SAFE"),
+
     ("duk_errcode_t", "DUK_ERR_NONE"),
-    ("duk_errcode_t", "DUK_ERR_UNIMPLEMENTED_ERROR"),
-    ("duk_errcode_t", "DUK_ERR_UNSUPPORTED_ERROR"),
-    ("duk_errcode_t", "DUK_ERR_INTERNAL_ERROR"),
-    ("duk_errcode_t", "DUK_ERR_ALLOC_ERROR"),
-    ("duk_errcode_t", "DUK_ERR_ASSERTION_ERROR"),
-    ("duk_errcode_t", "DUK_ERR_API_ERROR"),
-    ("duk_errcode_t", "DUK_ERR_UNCAUGHT_ERROR"),
     ("duk_errcode_t", "DUK_ERR_ERROR"),
     ("duk_errcode_t", "DUK_ERR_EVAL_ERROR"),
     ("duk_errcode_t", "DUK_ERR_RANGE_ERROR"),
@@ -209,13 +214,7 @@ const MACRO_CONSTANTS: &'static [(&'static str, &'static str)] = &[
     ("duk_errcode_t", "DUK_ERR_SYNTAX_ERROR"),
     ("duk_errcode_t", "DUK_ERR_TYPE_ERROR"),
     ("duk_errcode_t", "DUK_ERR_URI_ERROR"),
-    ("duk_ret_t", "DUK_RET_UNIMPLEMENTED_ERROR"),
-    ("duk_ret_t", "DUK_RET_UNSUPPORTED_ERROR"),
-    ("duk_ret_t", "DUK_RET_INTERNAL_ERROR"),
-    ("duk_ret_t", "DUK_RET_ALLOC_ERROR"),
-    ("duk_ret_t", "DUK_RET_ASSERTION_ERROR"),
-    ("duk_ret_t", "DUK_RET_API_ERROR"),
-    ("duk_ret_t", "DUK_RET_UNCAUGHT_ERROR"),
+
     ("duk_ret_t", "DUK_RET_ERROR"),
     ("duk_ret_t", "DUK_RET_EVAL_ERROR"),
     ("duk_ret_t", "DUK_RET_RANGE_ERROR"),
@@ -223,14 +222,13 @@ const MACRO_CONSTANTS: &'static [(&'static str, &'static str)] = &[
     ("duk_ret_t", "DUK_RET_SYNTAX_ERROR"),
     ("duk_ret_t", "DUK_RET_TYPE_ERROR"),
     ("duk_ret_t", "DUK_RET_URI_ERROR"),
-    ("duk_ret_t", "DUK_EXEC_SUCCESS"),
-    ("duk_ret_t", "DUK_EXEC_ERROR"),
-    ("duk_int_t", "DUK_LOG_TRACE"),
-    ("duk_int_t", "DUK_LOG_DEBUG"),
-    ("duk_int_t", "DUK_LOG_INFO"),
-    ("duk_int_t", "DUK_LOG_WARN"),
-    ("duk_int_t", "DUK_LOG_ERROR"),
-    ("duk_int_t", "DUK_LOG_FATAL"),
+
+    ("duk_int_t", "DUK_EXEC_SUCCESS"),
+    ("duk_int_t", "DUK_EXEC_ERROR"),
+
+    ("long", "DUK_LEVEL_DEBUG"),
+    ("long", "DUK_LEVEL_DDEBUG"),
+    ("long", "DUK_LEVEL_DDDEBUG"),
 ];
 
 const MACRO_FUNCTIONS: &'static [(&'static str, &'static str, &'static [(&'static str, &'static str)])] = &[
