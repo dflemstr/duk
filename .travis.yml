@@ -2,6 +2,11 @@ language: rust
 rust:
   - nightly
   - stable
+env:
+  - FEATURES="--no-default-features"
+  - FEATURES="--features debug"
+  - FEATURES="--features trace"
+  - FEATURES="--features spam"
 sudo: false
 
 env:
@@ -9,7 +14,7 @@ env:
     - RUST_BACKTRACE=1
 
 script:
-  - cargo test
+  - cargo test $FEATURES
   - cargo doc
 
 deploy:
