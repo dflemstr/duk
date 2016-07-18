@@ -21,6 +21,8 @@ fn main() {
         config.define("DUK_OPT_DEBUG_WRITE", Some("__duktape_sys_debug_write"));
     }
 
+    config.define("DUK_LOGGING_FLUSH", None);
+
     config.include("duktape/src");
     config.include("duktape/extras/logging");
     config.file("duktape/src/duktape.c");
