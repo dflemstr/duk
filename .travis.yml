@@ -3,15 +3,16 @@ rust:
   - nightly
   - stable
 env:
-  - FEATURES="--no-default-features"
-  - FEATURES="--features debug" FEATURE_DOC=true
-  - FEATURES="--features trace"
-  - FEATURES="--features spam"
 sudo: false
 
 env:
   global:
     - RUST_BACKTRACE=1
+  matrix:
+    - FEATURES="--no-default-features"
+    - FEATURES="--features debug" FEATURE_DOC=true
+    - FEATURES="--features trace"
+    - FEATURES="--features spam"
 
 script:
   - cargo test $FEATURES
