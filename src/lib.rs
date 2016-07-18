@@ -166,6 +166,20 @@ impl Context {
         }
     }
 
+    /// Like `eval_string`, but sets the file name for all of the evaluated functions to the
+    /// specified string.
+    pub fn eval_string_with_filename(&self, filename: &str, string: &str) -> Result<Reference> {
+        let filename_ptr = filename.as_ptr() as *const i8;
+        let string_ptr = string.as_ptr() as *const i8;
+        unsafe {
+            duktape_sys::duk_push_lstring(self.raw, filename_ptr, filename.len());
+            let flags = duktape_sys::DUK_COMPILE_EVAL | duktape_sys::DUK_COMPILE_NOSOURCE |
+                        duktape_sys::DUK_COMPILE_SAFE;
+            let ret = duktape_sys::duk_eval_raw(self.raw, string_ptr, string.len(), flags);
+            self.pop_reference_or_error(ret)
+        }
+    }
+
     /// Loads and evaluates the specified file within the current
     /// context.
     pub fn eval_file(&self, path: &path::Path) -> Result<Reference> {
@@ -629,7 +643,8 @@ mod tests {
     use std::collections;
 
     fn clean_error<A>(result: &mut Result<A>) {
-        if let &mut Err(Error::Js { ref mut file_name, ref mut line_number, ref mut stack , .. }) = result {
+        if let &mut Err(Error::Js { ref mut file_name, ref mut line_number, ref mut stack, .. }) =
+               result {
             *file_name = None;
             *line_number = None;
             *stack = None;
