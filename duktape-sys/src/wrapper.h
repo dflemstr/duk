@@ -1,5 +1,4 @@
 #pragma once
-#include <stdarg.h>
 #include "duktape.h"
 #include "duk_logging.h"
 
