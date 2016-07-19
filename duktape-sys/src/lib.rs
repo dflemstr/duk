@@ -18,7 +18,7 @@ pub use ffi::*;
 #[cfg(any(feature = "debug", feature = "trace", feature = "spam"))]
 #[no_mangle]
 pub unsafe extern "C" fn __duktape_sys_debug_write(
-    level: libc::c_long,
+    _: libc::c_long,
     file: *const libc::c_char,
     line: libc::c_long,
     func: *const libc::c_char,
