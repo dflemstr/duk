@@ -692,6 +692,7 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
     // The function magic is the log level that this handler should handle.
     let level = duk_get_current_magic(ctx);
     if level < DUK_LOG_TRACE || level > DUK_LOG_FATAL {
+        warn!("log_handler called with invalid level: {}", level);
         return 0;
     }
 
@@ -722,9 +723,7 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
         log::LogLevel::Error
     };
 
-    duk_get_prop_string(ctx,
-                        -2,
-                        nul_str(b"n\0"));
+    duk_get_prop_string(ctx, -2, nul_str(b"n\0"));
     // Stack: [ arg0 ... argN this loggerLevel loggerName ]
     duk_to_string(ctx, -1);
 
@@ -734,8 +733,7 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
     // Stack: [ arg0 ... argN this loggerLevel loggerName ]
     for i in 0..nargs {
         if 1 == duk_is_object(ctx, i) {
-            duk_push_string(ctx,
-                            ffi::CStr::from_bytes_with_nul_unchecked(b"fmt\0").as_ptr());
+            duk_push_string(ctx, nul_str(b"fmt\0"));
             duk_dup(ctx, i);
             // Stack: [ arg1 ... argN this loggerLevel loggerName 'fmt' arg ]
             // Call: this.fmt(arg) so -5 is this
