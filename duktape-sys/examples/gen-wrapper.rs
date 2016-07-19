@@ -46,6 +46,7 @@ fn write_wrapper_header() -> io::Result<()> {
     let mut header_file = try!(fs::File::create("src/wrapper.h"));
 
     try!(writeln!(header_file, "#pragma once"));
+    try!(writeln!(header_file, "#include <stdarg.h>"));
     try!(writeln!(header_file, "#include \"duktape.h\""));
     try!(writeln!(header_file, "#include \"duk_logging.h\""));
 
