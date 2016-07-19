@@ -121,6 +121,9 @@ pub enum JsErrorKind {
 /// Convenience type for results using the `Error` type.
 pub type Result<A> = result::Result<A, Error>;
 
+#[cfg(all(test, feature = "logging"))]
+pub static mut LAST_LOG_LEVELS: &'static mut [Option<log::LogLevel>; 16] = &mut [None; 16];
+
 impl Context {
     /// Creates a new context.
     pub fn new() -> Context {
@@ -711,13 +714,13 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
         return 0;
     }
 
-    let rust_level = if logger_level == DUK_LOG_TRACE {
+    let rust_level = if level == DUK_LOG_TRACE {
         log::LogLevel::Trace
-    } else if logger_level == DUK_LOG_DEBUG {
+    } else if level == DUK_LOG_DEBUG {
         log::LogLevel::Debug
-    } else if logger_level == DUK_LOG_INFO {
+    } else if level == DUK_LOG_INFO {
         log::LogLevel::Info
-    } else if logger_level == DUK_LOG_WARN {
+    } else if level == DUK_LOG_WARN {
         log::LogLevel::Warn
     } else {
         log::LogLevel::Error
@@ -770,9 +773,30 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
         msg.push_str(arg_str);
     }
 
+    // For test
+    stash_log(rust_level, &msg);
+
     log!(target: &format!("{}:{}", module_path!(), name_str), rust_level, "{}",  msg);
 
     0
+}
+
+#[cfg(all(test, feature = "logging"))]
+fn stash_log(level: log::LogLevel, msg: &str) {
+    println!("Logged: {} {}", level, msg);
+    unsafe {
+        for l in LAST_LOG_LEVELS.iter_mut() {
+            if l.is_none() {
+                *l = Some(level);
+                break;
+            }
+        }
+    }
+}
+
+#[cfg(all(not(test), feature = "logging"))]
+fn stash_log(_: log::LogLevel, _: &str) {
+    // No-op
 }
 
 unsafe extern "C" fn fatal_handler(_: *mut os::raw::c_void, msg_raw: *const os::raw::c_char) {
@@ -783,9 +807,14 @@ unsafe extern "C" fn fatal_handler(_: *mut os::raw::c_void, msg_raw: *const os::
 
 #[cfg(test)]
 mod tests {
+    extern crate env_logger;
+
     use super::*;
 
     use std::collections;
+
+    #[cfg(feature = "logging")]
+    use log;
 
     fn clean_error<A>(result: &mut Result<A>) {
         if let &mut Err(Error::Js { ref mut file_name, ref mut line_number, ref mut stack, .. }) =
@@ -798,6 +827,7 @@ mod tests {
 
     #[test]
     fn eval_string_undefined() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let value = ctx.eval_string("undefined").unwrap().to_value();
         assert_eq!(Value::Undefined, value);
@@ -806,6 +836,7 @@ mod tests {
 
     #[test]
     fn eval_string_null() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let value = ctx.eval_string("null").unwrap().to_value();
         assert_eq!(Value::Null, value);
@@ -814,6 +845,7 @@ mod tests {
 
     #[test]
     fn eval_string_boolean_true() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let value = ctx.eval_string("true").unwrap().to_value();
         assert_eq!(Value::Boolean(true), value);
@@ -822,6 +854,7 @@ mod tests {
 
     #[test]
     fn eval_string_boolean_false() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let value = ctx.eval_string("false").unwrap().to_value();
         assert_eq!(Value::Boolean(false), value);
@@ -830,6 +863,7 @@ mod tests {
 
     #[test]
     fn eval_string_number_integral() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let value = ctx.eval_string("4").unwrap().to_value();
         assert_eq!(Value::Number(4.0), value);
@@ -838,6 +872,7 @@ mod tests {
 
     #[test]
     fn eval_string_number_fractional() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let value = ctx.eval_string("0.5").unwrap().to_value();
         assert_eq!(Value::Number(0.5), value);
@@ -846,6 +881,7 @@ mod tests {
 
     #[test]
     fn eval_string_string() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let value = ctx.eval_string("'ab'").unwrap().to_value();
         assert_eq!(Value::String("ab".to_owned()), value);
@@ -854,6 +890,7 @@ mod tests {
 
     #[test]
     fn eval_string_array() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let value = ctx.eval_string("['a', 3, false]").unwrap().to_value();
         assert_eq!(Value::Array(vec![Value::String("a".to_owned()),
@@ -865,6 +902,7 @@ mod tests {
 
     #[test]
     fn eval_string_object() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let value = ctx.eval_string("({a: 'a', b: 3, c: false})").unwrap().to_value();
 
@@ -879,6 +917,7 @@ mod tests {
 
     #[test]
     fn eval_string_buffer() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let value = ctx.eval_string("Duktape.Buffer('abc')").unwrap().to_value();
         assert_eq!(Value::Bytes("abc".as_bytes().to_vec()), value);
@@ -887,6 +926,7 @@ mod tests {
 
     #[test]
     fn eval_string_error_generic() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let mut value = ctx.eval_string("throw 'foobar';");
         clean_error(&mut value);
@@ -903,6 +943,7 @@ mod tests {
 
     #[test]
     fn eval_string_error_error() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let mut value = ctx.eval_string("throw new Error('xyz')");
         clean_error(&mut value);
@@ -919,6 +960,7 @@ mod tests {
 
     #[test]
     fn eval_string_eval_error() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let mut value = ctx.eval_string("throw new EvalError('xyz')");
         clean_error(&mut value);
@@ -935,6 +977,7 @@ mod tests {
 
     #[test]
     fn eval_string_range_error() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let mut value = ctx.eval_string("throw new RangeError('xyz')");
         clean_error(&mut value);
@@ -951,6 +994,7 @@ mod tests {
 
     #[test]
     fn eval_string_reference_error() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let mut value = ctx.eval_string("throw new ReferenceError('xyz')");
         clean_error(&mut value);
@@ -967,6 +1011,7 @@ mod tests {
 
     #[test]
     fn eval_string_syntax_error() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let mut value = ctx.eval_string("throw new SyntaxError('xyz')");
         clean_error(&mut value);
@@ -983,6 +1028,7 @@ mod tests {
 
     #[test]
     fn eval_string_type_error() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let mut value = ctx.eval_string("throw new TypeError('xyz')");
         clean_error(&mut value);
@@ -999,6 +1045,7 @@ mod tests {
 
     #[test]
     fn eval_string_uri_error() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let mut value = ctx.eval_string("throw new URIError('xyz')");
         clean_error(&mut value);
@@ -1015,6 +1062,7 @@ mod tests {
 
     #[test]
     fn eval_string_global_object_get_key_call() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         ctx.eval_string(r"
           function foo() {
@@ -1032,6 +1080,7 @@ mod tests {
 
     #[test]
     fn eval_string_global_object_call_method() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         ctx.eval_string(r"
           var bar = 2;
@@ -1051,6 +1100,7 @@ mod tests {
 
     #[test]
     fn eval_string_global_object_get_key_call_with_this() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         ctx.eval_string(r"
           var bar = 2;
@@ -1072,6 +1122,7 @@ mod tests {
 
     #[test]
     fn eval_string_global_object_get_key_new() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         ctx.eval_string(r"
           function foo() {
@@ -1092,6 +1143,7 @@ mod tests {
 
     #[test]
     fn eval_string_call_global() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         ctx.eval_string(r"
           function foo() {
@@ -1105,6 +1157,7 @@ mod tests {
 
     #[test]
     fn eval_string_call_global_args() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         ctx.eval_string(r"
           function foo() {
@@ -1137,6 +1190,7 @@ mod tests {
 
     #[test]
     fn eval_string_call_global_error() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         ctx.eval_string(r"
           function foo() {
@@ -1158,6 +1212,7 @@ mod tests {
 
     #[test]
     fn call_non_existent() {
+        let _ = env_logger::init();
         let ctx = Context::new();
         let mut value = ctx.call_global("foo", &[]);
         clean_error(&mut value);
@@ -1170,5 +1225,38 @@ mod tests {
                    }),
                    value);
         ctx.assert_clean();
+    }
+
+    // XXX: this test is super brittle. It must be the only log test for now.
+    #[cfg(feature = "logging")]
+    #[test]
+    fn log_trace() {
+        let _ = env_logger::init();
+
+        // We can only verify that this doesn't panic
+        let ctx = Context::new();
+        ctx.eval_string(r"
+          var l = new Duktape.Logger('test');
+          l.l = 0;
+          l.trace('trace', 'foo');
+          l.debug('debug', 'foo');
+          l.info('info', 'foo');
+          l.warn('warn', 'foo');
+          l.error('error', 'foo');
+          l.fatal('fatal', 'foo');
+        ").unwrap();
+
+        let log_levels = unsafe {
+            LAST_LOG_LEVELS[0..6].to_vec()
+        };
+
+        assert_eq!(log_levels, vec![
+            Some(log::LogLevel::Trace),
+            Some(log::LogLevel::Debug),
+            Some(log::LogLevel::Info),
+            Some(log::LogLevel::Warn),
+            Some(log::LogLevel::Error),
+            Some(log::LogLevel::Error),
+        ]);
     }
 }

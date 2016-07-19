@@ -20,9 +20,12 @@ version = "*"
 optional = true
 version = "*"
 
+[dev-dependencies]
+env_logger = "*"
+
 [features]
+debug = ["duktape-sys/debug"]
 default = ["debug", "logging"]
 logging = ["log"]
-debug = ["duktape-sys/debug"]
 spam = ["duktape-sys/spam"]
 trace = ["duktape-sys/trace"]
