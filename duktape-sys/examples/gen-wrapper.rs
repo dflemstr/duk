@@ -17,6 +17,7 @@ fn write_ffi() -> io::Result<()> {
         .header("src/wrapper.h")
         .clang_arg("-Iduktape/src")
         .clang_arg("-Iduktape/extras/logging")
+        .clang_arg("-std=c99")
         .match_pat("duk_config.h")
         .match_pat("duk_logging.h")
         .match_pat("duktape.h")

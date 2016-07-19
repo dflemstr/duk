@@ -25,6 +25,7 @@ fn main() {
 
     config.include("duktape/src");
     config.include("duktape/extras/logging");
+    config.flag("-std=c99");
     config.file("duktape/src/duktape.c");
     config.file("duktape/extras/logging/duk_logging.c");
     config.file("src/wrapper.c");
