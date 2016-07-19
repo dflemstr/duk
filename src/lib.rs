@@ -13,19 +13,20 @@
 //! [1]: http://duktape.org/
 
 extern crate duktape_sys;
+#[macro_use]
+extern crate error_chain;
+
 #[cfg(feature = "logging")]
 #[macro_use]
 extern crate log;
 
+
 use std::collections;
-use std::error;
 use std::ffi;
-use std::fmt;
 use std::mem;
 use std::os;
 use std::path;
 use std::ptr;
-use std::result;
 use std::slice;
 use std::str;
 use std::sync::atomic;
@@ -81,18 +82,30 @@ pub enum Value {
 }
 
 /// The type of errors that might occur.
+error_chain! {
+    types {
+        Error, ErrorKind, ChainErr, Result;
+    }
+    links {}
+    foreign_links {}
+    errors {
+        Js(error: JsError) {
+            description("Javascript error")
+            display("Javascript error: {}", error.message)
+        }
+    }
+}
+
+/// An error that originates from executing Javascript/Ecmascript.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Error {
-    /// An error that originates from executing Javascript/Ecmascript.
-    Js {
-        /// The kind of error.
-        kind: JsErrorKind,
-        /// A descriptive user-controlled error message.
-        message: String,
-        file_name: Option<String>,
-        line_number: Option<usize>,
-        stack: Option<String>,
-    },
+pub struct JsError {
+    /// The kind of error.
+    pub kind: JsErrorKind,
+    /// A descriptive user-controlled error message.
+    pub message: String,
+    pub file_name: Option<String>,
+    pub line_number: Option<usize>,
+    pub stack: Option<String>,
 }
 
 /// Kinds of Javascript/Ecmascript errors
@@ -117,9 +130,6 @@ pub enum JsErrorKind {
     /// An error that's an instance of `UriError`.
     Uri,
 }
-
-/// Convenience type for results using the `Error` type.
-pub type Result<A> = result::Result<A, Error>;
 
 #[cfg(all(test, feature = "logging"))]
 pub static mut LAST_LOG_LEVELS: &'static mut [Option<log::LogLevel>; 16] = &mut [None; 16];
@@ -204,9 +214,14 @@ impl Context {
     /// let ctx = duk::Context::new();
     /// let result = ctx.eval_string("var a = {}; a.foo()");
     /// match result {
-    ///   Err(duk::Error::Js { kind, message, .. }) => {
-    ///     assert_eq!(duk::JsErrorKind::Type, kind);
-    ///     assert_eq!("undefined not callable", message);
+    ///   Err(duk::Error(ref k, _)) => {
+    ///     match k {
+    ///       &duk::ErrorKind::Js(duk::JsError { kind, ref message, .. }) => {
+    ///         assert_eq!(duk::JsErrorKind::Type, kind);
+    ///         assert_eq!("undefined not callable", message);
+    ///       },
+    ///       _ => unreachable!(),
+    ///     }
     ///   },
     ///   _ => unreachable!(),
     /// }
@@ -596,29 +611,13 @@ impl Error {
             });
         let stack = get_string_property(ctx, index, "stack");
 
-        Error::Js {
+        ErrorKind::Js(JsError {
             kind: kind,
             message: message,
             file_name: file_name,
             line_number: line_number,
             stack: stack,
-        }
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::Js { ref message, .. } => write!(f, "JS error: {}", message),
-        }
-    }
-}
-
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::Js { .. } => "JS error",
-        }
+        }).into()
     }
 }
 
@@ -812,16 +811,22 @@ mod tests {
     use super::*;
 
     use std::collections;
+    use std::fmt;
 
     #[cfg(feature = "logging")]
     use log;
 
-    fn clean_error<A>(result: &mut Result<A>) {
-        if let &mut Err(Error::Js { ref mut file_name, ref mut line_number, ref mut stack, .. }) =
-               result {
-            *file_name = None;
-            *line_number = None;
-            *stack = None;
+    fn assert_js_error<A: fmt::Debug>(result: &Result<A>, expected_kind: JsErrorKind, expected_message: &str) {
+        if let &Err(Error(ref k, _)) = result {
+            match k {
+                &ErrorKind::Js(JsError { kind, ref message, ..}) => {
+                    assert_eq!(expected_kind, kind);
+                    assert_eq!(expected_message, message);
+                }
+                _ => panic!("Not a Javascript error: {}", k),
+            }
+        } else {
+            panic!("Not an error: {:?}", result);
         }
     }
 
@@ -928,16 +933,8 @@ mod tests {
     fn eval_string_error_generic() {
         let _ = env_logger::init();
         let ctx = Context::new();
-        let mut value = ctx.eval_string("throw 'foobar';");
-        clean_error(&mut value);
-        assert_eq!(Err(Error::Js {
-                       kind: JsErrorKind::Generic,
-                       message: "foobar".to_owned(),
-                       file_name: None,
-                       line_number: None,
-                       stack: None,
-                   }),
-                   value);
+        let value = ctx.eval_string("throw 'foobar';");
+        assert_js_error(&value, JsErrorKind::Generic, "foobar");
         ctx.assert_clean();
     }
 
@@ -945,16 +942,8 @@ mod tests {
     fn eval_string_error_error() {
         let _ = env_logger::init();
         let ctx = Context::new();
-        let mut value = ctx.eval_string("throw new Error('xyz')");
-        clean_error(&mut value);
-        assert_eq!(Err(Error::Js {
-                       kind: JsErrorKind::Error,
-                       message: "xyz".to_owned(),
-                       file_name: None,
-                       line_number: None,
-                       stack: None,
-                   }),
-                   value);
+        let value = ctx.eval_string("throw new Error('xyz')");
+        assert_js_error(&value, JsErrorKind::Error, "xyz");
         ctx.assert_clean();
     }
 
@@ -962,16 +951,8 @@ mod tests {
     fn eval_string_eval_error() {
         let _ = env_logger::init();
         let ctx = Context::new();
-        let mut value = ctx.eval_string("throw new EvalError('xyz')");
-        clean_error(&mut value);
-        assert_eq!(Err(Error::Js {
-                       kind: JsErrorKind::Eval,
-                       message: "xyz".to_owned(),
-                       file_name: None,
-                       line_number: None,
-                       stack: None,
-                   }),
-                   value);
+        let value = ctx.eval_string("throw new EvalError('xyz')");
+        assert_js_error(&value, JsErrorKind::Eval, "xyz");
         ctx.assert_clean();
     }
 
@@ -979,16 +960,8 @@ mod tests {
     fn eval_string_range_error() {
         let _ = env_logger::init();
         let ctx = Context::new();
-        let mut value = ctx.eval_string("throw new RangeError('xyz')");
-        clean_error(&mut value);
-        assert_eq!(Err(Error::Js {
-                       kind: JsErrorKind::Range,
-                       message: "xyz".to_owned(),
-                       file_name: None,
-                       line_number: None,
-                       stack: None,
-                   }),
-                   value);
+        let value = ctx.eval_string("throw new RangeError('xyz')");
+        assert_js_error(&value, JsErrorKind::Range, "xyz");
         ctx.assert_clean();
     }
 
@@ -996,16 +969,8 @@ mod tests {
     fn eval_string_reference_error() {
         let _ = env_logger::init();
         let ctx = Context::new();
-        let mut value = ctx.eval_string("throw new ReferenceError('xyz')");
-        clean_error(&mut value);
-        assert_eq!(Err(Error::Js {
-                       kind: JsErrorKind::Reference,
-                       message: "xyz".to_owned(),
-                       file_name: None,
-                       line_number: None,
-                       stack: None,
-                   }),
-                   value);
+        let value = ctx.eval_string("throw new ReferenceError('xyz')");
+        assert_js_error(&value, JsErrorKind::Reference, "xyz");
         ctx.assert_clean();
     }
 
@@ -1013,16 +978,8 @@ mod tests {
     fn eval_string_syntax_error() {
         let _ = env_logger::init();
         let ctx = Context::new();
-        let mut value = ctx.eval_string("throw new SyntaxError('xyz')");
-        clean_error(&mut value);
-        assert_eq!(Err(Error::Js {
-                       kind: JsErrorKind::Syntax,
-                       message: "xyz".to_owned(),
-                       file_name: None,
-                       line_number: None,
-                       stack: None,
-                   }),
-                   value);
+        let value = ctx.eval_string("throw new SyntaxError('xyz')");
+        assert_js_error(&value, JsErrorKind::Syntax, "xyz");
         ctx.assert_clean();
     }
 
@@ -1030,16 +987,8 @@ mod tests {
     fn eval_string_type_error() {
         let _ = env_logger::init();
         let ctx = Context::new();
-        let mut value = ctx.eval_string("throw new TypeError('xyz')");
-        clean_error(&mut value);
-        assert_eq!(Err(Error::Js {
-                       kind: JsErrorKind::Type,
-                       message: "xyz".to_owned(),
-                       file_name: None,
-                       line_number: None,
-                       stack: None,
-                   }),
-                   value);
+        let value = ctx.eval_string("throw new TypeError('xyz')");
+        assert_js_error(&value, JsErrorKind::Type, "xyz");
         ctx.assert_clean();
     }
 
@@ -1047,16 +996,8 @@ mod tests {
     fn eval_string_uri_error() {
         let _ = env_logger::init();
         let ctx = Context::new();
-        let mut value = ctx.eval_string("throw new URIError('xyz')");
-        clean_error(&mut value);
-        assert_eq!(Err(Error::Js {
-                       kind: JsErrorKind::Uri,
-                       message: "xyz".to_owned(),
-                       file_name: None,
-                       line_number: None,
-                       stack: None,
-                   }),
-                   value);
+        let value = ctx.eval_string("throw new URIError('xyz')");
+        assert_js_error(&value, JsErrorKind::Uri, "xyz");
         ctx.assert_clean();
     }
 
@@ -1196,17 +1137,9 @@ mod tests {
           function foo() {
             throw 'a';
           }")
-            .unwrap();
-        let mut value = ctx.call_global("foo", &[]);
-        clean_error(&mut value);
-        assert_eq!(Err(Error::Js {
-                       kind: JsErrorKind::Generic,
-                       message: "a".to_owned(),
-                       file_name: None,
-                       line_number: None,
-                       stack: None,
-                   }),
-                   value);
+           .unwrap();
+        let value = ctx.call_global("foo", &[]);
+        assert_js_error(&value, JsErrorKind::Generic, "a");
         ctx.assert_clean();
     }
 
@@ -1214,16 +1147,8 @@ mod tests {
     fn call_non_existent() {
         let _ = env_logger::init();
         let ctx = Context::new();
-        let mut value = ctx.call_global("foo", &[]);
-        clean_error(&mut value);
-        assert_eq!(Err(Error::Js {
-                       kind: JsErrorKind::Type,
-                       message: "undefined not callable".to_owned(),
-                       file_name: None,
-                       line_number: None,
-                       stack: None,
-                   }),
-                   value);
+        let value = ctx.call_global("foo", &[]);
+        assert_js_error(&value, JsErrorKind::Type, "undefined not callable");
         ctx.assert_clean();
     }
 

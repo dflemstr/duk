@@ -11,6 +11,7 @@ repository = "https://github.com/dflemstr/duk"
 version = "0.1.0"
 
 [dependencies]
+error-chain = "*"
 
 [dependencies.duktape-sys]
 path = "duktape-sys"
