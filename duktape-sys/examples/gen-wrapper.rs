@@ -233,6 +233,13 @@ const MACRO_CONSTANTS: &'static [(&'static str, &'static str)] = &[
     ("long", "DUK_LEVEL_DEBUG"),
     ("long", "DUK_LEVEL_DDEBUG"),
     ("long", "DUK_LEVEL_DDDEBUG"),
+
+    ("duk_int_t", "DUK_LOG_TRACE"),
+    ("duk_int_t", "DUK_LOG_DEBUG"),
+    ("duk_int_t", "DUK_LOG_INFO"),
+    ("duk_int_t", "DUK_LOG_WARN"),
+    ("duk_int_t", "DUK_LOG_ERROR"),
+    ("duk_int_t", "DUK_LOG_FATAL"),
 ];
 
 const MACRO_FUNCTIONS: &'static [(&'static str, &'static str, &'static [(&'static str, &'static str)])] = &[

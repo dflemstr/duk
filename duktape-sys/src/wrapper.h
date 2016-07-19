@@ -427,6 +427,36 @@ const long DUK_LEVEL_DDEBUG;
 const long DUK_LEVEL_DDDEBUG;
 #pragma pop_macro("DUK_LEVEL_DDDEBUG")
 
+#pragma push_macro("DUK_LOG_TRACE")
+#undef DUK_LOG_TRACE
+const duk_int_t DUK_LOG_TRACE;
+#pragma pop_macro("DUK_LOG_TRACE")
+
+#pragma push_macro("DUK_LOG_DEBUG")
+#undef DUK_LOG_DEBUG
+const duk_int_t DUK_LOG_DEBUG;
+#pragma pop_macro("DUK_LOG_DEBUG")
+
+#pragma push_macro("DUK_LOG_INFO")
+#undef DUK_LOG_INFO
+const duk_int_t DUK_LOG_INFO;
+#pragma pop_macro("DUK_LOG_INFO")
+
+#pragma push_macro("DUK_LOG_WARN")
+#undef DUK_LOG_WARN
+const duk_int_t DUK_LOG_WARN;
+#pragma pop_macro("DUK_LOG_WARN")
+
+#pragma push_macro("DUK_LOG_ERROR")
+#undef DUK_LOG_ERROR
+const duk_int_t DUK_LOG_ERROR;
+#pragma pop_macro("DUK_LOG_ERROR")
+
+#pragma push_macro("DUK_LOG_FATAL")
+#undef DUK_LOG_FATAL
+const duk_int_t DUK_LOG_FATAL;
+#pragma pop_macro("DUK_LOG_FATAL")
+
 #pragma push_macro("duk_create_heap_default")
 #undef duk_create_heap_default
 duk_context * duk_create_heap_default();

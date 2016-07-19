@@ -13,6 +13,9 @@
 //! [1]: http://duktape.org/
 
 extern crate duktape_sys;
+#[cfg(feature = "logging")]
+#[macro_use]
+extern crate log;
 
 use std::collections;
 use std::error;
@@ -126,13 +129,57 @@ impl Context {
         };
 
         unsafe {
-            duktape_sys::duk_logging_init(raw, 0);
+            Context::setup_logging(raw);
         }
 
         Context {
             raw: raw,
             next_stash_idx: atomic::ATOMIC_USIZE_INIT,
         }
+    }
+
+    #[cfg(feature = "logging")]
+    unsafe fn setup_logging(ctx: *mut duktape_sys::duk_context) {
+        use duktape_sys::*;
+        duk_logging_init(ctx, 0);
+
+        duk_push_global_object(ctx);
+        duk_get_prop_string(ctx, -1, nul_str(b"Duktape\0"));
+        duk_get_prop_string(ctx, -1, nul_str(b"Logger\0"));
+        duk_get_prop_string(ctx, -1, nul_str(b"prototype\0"));
+        // Stack: [ global .Duktape .Logger .prototype ]
+
+        duk_push_c_function(ctx, Some(log_handler), DUK_VARARGS);
+        duk_set_magic(ctx, -1, DUK_LOG_TRACE);
+        duk_put_prop_string(ctx, -2, nul_str(b"trace\0"));
+
+        duk_push_c_function(ctx, Some(log_handler), DUK_VARARGS);
+        duk_set_magic(ctx, -1, DUK_LOG_DEBUG);
+        duk_put_prop_string(ctx, -2, nul_str(b"debug\0"));
+
+        duk_push_c_function(ctx, Some(log_handler), DUK_VARARGS);
+        duk_set_magic(ctx, -1, DUK_LOG_INFO);
+        duk_put_prop_string(ctx, -2, nul_str(b"info\0"));
+
+        duk_push_c_function(ctx, Some(log_handler), DUK_VARARGS);
+        duk_set_magic(ctx, -1, DUK_LOG_WARN);
+        duk_put_prop_string(ctx, -2, nul_str(b"warn\0"));
+
+        duk_push_c_function(ctx, Some(log_handler), DUK_VARARGS);
+        duk_set_magic(ctx, -1, DUK_LOG_ERROR);
+        duk_put_prop_string(ctx, -2, nul_str(b"error\0"));
+
+        duk_push_c_function(ctx, Some(log_handler), DUK_VARARGS);
+        duk_set_magic(ctx, -1, DUK_LOG_FATAL);
+        duk_put_prop_string(ctx, -2, nul_str(b"fatal\0"));
+
+        // Stack: [ global .Duktape .Logger .prototype ]
+        duk_pop_n(ctx, 4);
+    }
+
+    #[cfg(not(feature = "logging"))]
+    unsafe fn setup_logging(_: *mut duktape_sys::duk_context) {
+        // No-op
     }
 
     /// Evaluates the specified script string within the current
@@ -539,11 +586,11 @@ impl Error {
             Some(n)
         });
         let line_number = get_number_property(ctx, index, "lineNumber")
-                              .and_then(|n| if n.is_nan() {
-                                  None
-                              } else {
-                                  Some(n as usize)
-                              });
+            .and_then(|n| if n.is_nan() {
+                None
+            } else {
+                Some(n as usize)
+            });
         let stack = get_string_property(ctx, index, "stack");
 
         Error::Js {
@@ -632,6 +679,102 @@ unsafe fn get_number_property(ctx: *mut duktape_sys::duk_context,
         duktape_sys::duk_pop(ctx);
         None
     }
+}
+
+unsafe fn nul_str(data: &[u8]) -> *const os::raw::c_char {
+    ffi::CStr::from_bytes_with_nul_unchecked(data).as_ptr()
+}
+
+#[cfg(feature = "logging")]
+unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_sys::duk_ret_t {
+    use duktape_sys::*; // Because this function is essentially only calling C stuff
+
+    // The function magic is the log level that this handler should handle.
+    let level = duk_get_current_magic(ctx);
+    if level < DUK_LOG_TRACE || level > DUK_LOG_FATAL {
+        return 0;
+    }
+
+    // Stack: [ arg0 ... argN ]
+    let nargs = duk_get_top(ctx);
+
+    duk_push_this(ctx);
+    // Stack: [ arg0 ... argN this ]
+
+    duk_get_prop_string(ctx, -1, nul_str(b"l\0"));
+    // Stack: [ arg0 ... argN this loggerLevel ]
+
+    // Check if we should log this level with this logger
+    let logger_level = duk_get_int(ctx, -1);
+    if level < logger_level {
+        return 0;
+    }
+
+    let rust_level = if logger_level == DUK_LOG_TRACE {
+        log::LogLevel::Trace
+    } else if logger_level == DUK_LOG_DEBUG {
+        log::LogLevel::Debug
+    } else if logger_level == DUK_LOG_INFO {
+        log::LogLevel::Info
+    } else if logger_level == DUK_LOG_WARN {
+        log::LogLevel::Warn
+    } else {
+        log::LogLevel::Error
+    };
+
+    duk_get_prop_string(ctx,
+                        -2,
+                        nul_str(b"n\0"));
+    // Stack: [ arg0 ... argN this loggerLevel loggerName ]
+    duk_to_string(ctx, -1);
+
+    let mut total_len = 0;
+
+    // Replace all args with equivalent strings, and compute their lengths
+    // Stack: [ arg0 ... argN this loggerLevel loggerName ]
+    for i in 0..nargs {
+        if 1 == duk_is_object(ctx, i) {
+            duk_push_string(ctx,
+                            ffi::CStr::from_bytes_with_nul_unchecked(b"fmt\0").as_ptr());
+            duk_dup(ctx, i);
+            // Stack: [ arg1 ... argN this loggerLevel loggerName 'fmt' arg ]
+            // Call: this.fmt(arg) so -5 is this
+            duk_pcall_prop(ctx, -5, 1);
+            duk_replace(ctx, i);
+        }
+
+        let mut arg_len = mem::uninitialized();
+
+        duk_to_lstring(ctx, i, &mut arg_len);
+
+        total_len += arg_len as usize;
+    }
+
+    // Stack: [ arg0String ... argNString this loggerLevel loggerName ]
+
+    let mut name_len = mem::uninitialized();
+    let name_data = duk_get_lstring(ctx, -1, &mut name_len);
+    let name_slice = slice::from_raw_parts(name_data as *const u8, name_len);
+    let name_str = str::from_utf8(name_slice).unwrap();
+
+    // Allocate message space; include nargs to allocate spaces
+    let mut msg = String::with_capacity(total_len + name_str.len() + nargs as usize + 1);
+    msg.push_str(name_str);
+    msg.push(':');
+
+    for i in 0..nargs {
+        let mut arg_len = mem::uninitialized();
+        let arg_data = duk_get_lstring(ctx, i, &mut arg_len);
+        let slice = slice::from_raw_parts(arg_data as *const u8, arg_len);
+        let arg_str = str::from_utf8(slice).unwrap();
+
+        msg.push(' ');
+        msg.push_str(arg_str);
+    }
+
+    log!(target: &format!("{}:{}", module_path!(), name_str), rust_level, "{}",  msg);
+
+    0
 }
 
 unsafe extern "C" fn fatal_handler(_: *mut os::raw::c_void, msg_raw: *const os::raw::c_char) {
@@ -879,7 +1022,7 @@ mod tests {
           function foo() {
             return 'a';
           }")
-           .unwrap();
+            .unwrap();
         let global = ctx.global_object();
         ctx.assert_clean();
         let foo = global.get("foo").unwrap();
@@ -900,7 +1043,7 @@ mod tests {
             }
             return Array.prototype.slice.call(arguments);
           }")
-           .unwrap();
+            .unwrap();
         let global = ctx.global_object();
         ctx.assert_clean();
         let value = global.call_method("foo", &[&Value::Number(4.25)]).unwrap().to_value();
@@ -919,7 +1062,7 @@ mod tests {
             }
             return Array.prototype.slice.call(arguments);
           }")
-           .unwrap();
+            .unwrap();
         let global = ctx.global_object();
         ctx.assert_clean();
         let foo = global.get("foo").unwrap();
@@ -939,7 +1082,7 @@ mod tests {
             }
             return Array.prototype.slice.call(arguments);
           }")
-           .unwrap();
+            .unwrap();
         let global = ctx.global_object();
         ctx.assert_clean();
         let foo = global.get("foo").unwrap();
@@ -956,7 +1099,7 @@ mod tests {
           function foo() {
             return 'a';
           }")
-           .unwrap();
+            .unwrap();
         let value = ctx.call_global("foo", &[]).unwrap().to_value();
         assert_eq!(Value::String("a".to_owned()), value);
         ctx.assert_clean();
@@ -969,7 +1112,7 @@ mod tests {
           function foo() {
             return Array.prototype.slice.call(arguments);
           }")
-           .unwrap();
+            .unwrap();
 
         let mut obj = collections::BTreeMap::new();
         obj.insert("a".to_owned(), Value::String("a".to_owned()));
@@ -1001,7 +1144,7 @@ mod tests {
           function foo() {
             throw 'a';
           }")
-           .unwrap();
+            .unwrap();
         let mut value = ctx.call_global("foo", &[]);
         clean_error(&mut value);
         assert_eq!(Err(Error::Js {

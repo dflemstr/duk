@@ -16,7 +16,13 @@ version = "0.1.0"
 path = "duktape-sys"
 version = "*"
 
+[dependencies.log]
+optional = true
+version = "*"
+
 [features]
+default = ["debug", "logging"]
+logging = ["log"]
 debug = ["duktape-sys/debug"]
 spam = ["duktape-sys/spam"]
 trace = ["duktape-sys/trace"]

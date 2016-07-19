@@ -10,7 +10,9 @@ env:
     - RUST_BACKTRACE=1
   matrix:
     - FEATURES="--no-default-features"
-    - FEATURES="--features debug" FEATURE_DOC=true
+    - FEATURES="" FEATURE_DOC=true
+    - FEATURES="--features debug"
+    - FEATURES="--features logging"
     - FEATURES="--features trace"
     - FEATURES="--features spam"
 

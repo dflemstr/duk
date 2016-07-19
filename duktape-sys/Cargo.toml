@@ -24,7 +24,6 @@ version = "*"
 bindgen = "0.18.0"
 
 [features]
-default = ["debug"]
 debug = ["log"]
 trace = ["log"]
 spam = ["log"]

@@ -324,6 +324,12 @@ extern "C" {
     pub static DUK_LEVEL_DEBUG: ::std::os::raw::c_long;
     pub static DUK_LEVEL_DDEBUG: ::std::os::raw::c_long;
     pub static DUK_LEVEL_DDDEBUG: ::std::os::raw::c_long;
+    pub static DUK_LOG_TRACE: duk_int_t;
+    pub static DUK_LOG_DEBUG: duk_int_t;
+    pub static DUK_LOG_INFO: duk_int_t;
+    pub static DUK_LOG_WARN: duk_int_t;
+    pub static DUK_LOG_ERROR: duk_int_t;
+    pub static DUK_LOG_FATAL: duk_int_t;
 }
 extern "C" {
     pub fn duk_create_heap(alloc_func: duk_alloc_function,
