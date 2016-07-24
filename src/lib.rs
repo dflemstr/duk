@@ -1308,14 +1308,14 @@ mod tests {
     fn load_module() {
         let _ = env_logger::init();
 
-        let resolver: Box<ModuleResolver> = Box::new(|a, _| format!("{}.js", a));
-        let loader: Box<ModuleLoader> = Box::new(|m| if m == "foo.js" { Some("exports.num = 3".to_owned()) } else { None });
+        let resolver: Box<ModuleResolver> = Box::new(|a, _| a[..a.len() - 3].to_owned());
+        let loader: Box<ModuleLoader> = Box::new(|m| if m == "foo" { Some("exports.num = 3".to_owned()) } else { None });
         let ctx = Context::builder()
             .with_module_resolver(resolver)
             .with_module_loader(loader)
             .build();
 
-        let value = ctx.eval_string(r#"require("foo").num"#).unwrap().to_value();
+        let value = ctx.eval_string(r#"require("foo.js").num"#).unwrap().to_value();
         assert_eq!(Value::Number(3.0), value);
     }
 }
