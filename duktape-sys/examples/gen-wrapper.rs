@@ -17,9 +17,11 @@ fn write_ffi() -> io::Result<()> {
         .header("src/wrapper.h")
         .clang_arg("-Iduktape/src")
         .clang_arg("-Iduktape/extras/logging")
+        .clang_arg("-Iduktape/extras/module-node")
         .clang_arg("-std=c99")
         .match_pat("duk_config.h")
         .match_pat("duk_logging.h")
+        .match_pat("duk_module_node.h")
         .match_pat("duktape.h")
         .match_pat("wrapper.h")
         .forbid_unknown_types()
@@ -49,6 +51,7 @@ fn write_wrapper_header() -> io::Result<()> {
     try!(writeln!(header_file, "#pragma once"));
     try!(writeln!(header_file, "#include \"duktape.h\""));
     try!(writeln!(header_file, "#include \"duk_logging.h\""));
+    try!(writeln!(header_file, "#include \"duk_module_node.h\""));
 
     for &(t, n) in MACRO_CONSTANTS {
         try!(writeln!(header_file, ""));

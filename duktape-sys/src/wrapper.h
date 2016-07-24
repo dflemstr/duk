@@ -1,6 +1,7 @@
 #pragma once
 #include "duktape.h"
 #include "duk_logging.h"
+#include "duk_module_node.h"
 
 #pragma push_macro("DUK_VERSION")
 #undef DUK_VERSION

@@ -20,9 +20,9 @@ extern crate error_chain;
 #[macro_use]
 extern crate log;
 
-
 use std::collections;
 use std::ffi;
+use std::fmt;
 use std::mem;
 use std::os;
 use std::path;
@@ -31,11 +31,21 @@ use std::slice;
 use std::str;
 use std::sync::atomic;
 
+pub type ModuleResolver = Fn(String, String) -> String;
+pub type ModuleLoader = Fn(String) -> Option<String>;
+
 /// A context corresponding to a thread of script execution.
-#[derive(Debug)]
 pub struct Context {
     raw: *mut duktape_sys::duk_context,
     next_stash_idx: atomic::AtomicUsize,
+    module_resolver: Option<*mut Box<ModuleResolver>>,
+    module_loader: Option<*mut Box<ModuleLoader>>,
+}
+
+#[derive(Default)]
+pub struct ContextBuilder {
+    module_resolver: Option<Box<ModuleResolver>>,
+    module_loader: Option<Box<ModuleLoader>>,
 }
 
 /// Something that can be used as an argument when calling into Javascript code.
@@ -137,6 +147,14 @@ pub static mut LAST_LOG_LEVELS: &'static mut [Option<log::LogLevel>; 16] = &mut 
 impl Context {
     /// Creates a new context.
     pub fn new() -> Context {
+        Context::from_builder(Context::builder())
+    }
+
+    pub fn builder() -> ContextBuilder {
+        ContextBuilder::default()
+    }
+
+    fn from_builder(builder: ContextBuilder) -> Context {
         let raw = unsafe {
             duktape_sys::duk_create_heap(None, None, None, ptr::null_mut(), Some(fatal_handler))
         };
@@ -145,9 +163,35 @@ impl Context {
             Context::setup_logging(raw);
         }
 
+        let (resolver_ptr, loader_ptr) = match (builder.module_resolver, builder.module_loader) {
+            (Some(module_resolver), Some(module_loader)) =>
+                unsafe {
+                    let resolver_ptr = Box::into_raw(Box::new(module_resolver));
+                    let loader_ptr = Box::into_raw(Box::new(module_loader));
+                    duktape_sys::duk_push_object(raw);
+
+                    duktape_sys::duk_push_c_function(raw, Some(module_resolve_handler), duktape_sys::DUK_VARARGS);
+                    duktape_sys::duk_push_pointer(raw, resolver_ptr as *mut os::raw::c_void);
+                    duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"closure\0"));
+                    duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"resolve\0"));
+
+                    duktape_sys::duk_push_c_function(raw, Some(module_load_handler), duktape_sys::DUK_VARARGS);
+                    duktape_sys::duk_push_pointer(raw, loader_ptr as *mut os::raw::c_void);
+                    duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"closure\0"));
+                    duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"load\0"));
+
+                    duktape_sys::duk_module_node_init(raw);
+
+                    (Some(resolver_ptr), Some(loader_ptr))
+                },
+            (_, _) => (None, None),
+        };
+
         Context {
             raw: raw,
             next_stash_idx: atomic::ATOMIC_USIZE_INIT,
+            module_resolver: resolver_ptr,
+            module_loader: loader_ptr,
         }
     }
 
@@ -316,9 +360,38 @@ impl Context {
     }
 }
 
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Context({:p})", self.raw)
+    }
+}
+
 impl Drop for Context {
     fn drop(&mut self) {
         unsafe { duktape_sys::duk_destroy_heap(self.raw) };
+        if let Some(ptr) = self.module_resolver {
+            drop(unsafe { Box::from_raw(ptr) });
+        }
+        if let Some(ptr) = self.module_loader {
+            drop(unsafe { Box::from_raw(ptr) });
+        }
+    }
+}
+
+impl ContextBuilder {
+
+    pub fn with_module_resolver(mut self, module_resolver: Box<ModuleResolver>) -> Self {
+        self.module_resolver = Some(module_resolver);
+        self
+    }
+
+    pub fn with_module_loader(mut self, module_loader: Box<ModuleLoader>) -> Self {
+        self.module_loader = Some(module_loader);
+        self
+    }
+
+    pub fn build(self) -> Context {
+        Context::from_builder(self)
     }
 }
 
@@ -685,6 +758,52 @@ unsafe fn get_number_property(ctx: *mut duktape_sys::duk_context,
 
 unsafe fn nul_str(data: &[u8]) -> *const os::raw::c_char {
     ffi::CStr::from_bytes_with_nul_unchecked(data).as_ptr()
+}
+
+unsafe extern "C" fn module_resolve_handler(ctx: *mut duktape_sys::duk_context) -> duktape_sys::duk_ret_t {
+    let requested_id = get_string(ctx, 0);
+    let parent_id = get_string(ctx, 1);
+    duktape_sys::duk_pop_2(ctx);
+
+    duktape_sys::duk_push_current_function(ctx);
+    duktape_sys::duk_get_prop_string(ctx, -1, nul_str(b"closure\0"));
+    let ptr = duktape_sys::duk_get_pointer(ctx, -1) as *mut Box<ModuleResolver>;
+    assert!(!ptr.is_null());
+    let resolve = Box::from_raw(ptr);
+    duktape_sys::duk_pop_2(ctx);
+
+    // Ensure clear stack before entering the Rust wild west
+    let result = resolve(requested_id, parent_id);
+
+    mem::forget(resolve);
+
+    Value::String(result).push(ctx);
+
+    1
+}
+
+unsafe extern "C" fn module_load_handler(ctx: *mut duktape_sys::duk_context) -> duktape_sys::duk_ret_t {
+    let resolved_id = get_string(ctx, 0);
+    duktape_sys::duk_pop_3(ctx); // Discard 'exports' and 'module'
+
+    duktape_sys::duk_push_current_function(ctx);
+    duktape_sys::duk_get_prop_string(ctx, -1, nul_str(b"closure\0"));
+    let ptr = duktape_sys::duk_get_pointer(ctx, -1) as *mut Box<ModuleLoader>;
+    assert!(!ptr.is_null());
+    let load = Box::from_raw(ptr);
+    duktape_sys::duk_pop_2(ctx);
+
+    let result = load(resolved_id);
+
+    mem::forget(load);
+
+    // Ensure clear stack before entering the Rust wild west
+    if let Some(result) = result {
+        Value::String(result).push(ctx);
+        1
+    } else {
+        0
+    }
 }
 
 #[cfg(feature = "logging")]
@@ -1183,5 +1302,20 @@ mod tests {
             Some(log::LogLevel::Error),
             Some(log::LogLevel::Error),
         ]);
+    }
+
+    #[test]
+    fn load_module() {
+        let _ = env_logger::init();
+
+        let resolver: Box<ModuleResolver> = Box::new(|a, _| format!("{}.js", a));
+        let loader: Box<ModuleLoader> = Box::new(|m| if m == "foo.js" { Some("exports.num = 3".to_owned()) } else { None });
+        let ctx = Context::builder()
+            .with_module_resolver(resolver)
+            .with_module_loader(loader)
+            .build();
+
+        let value = ctx.eval_string(r#"require("foo").num"#).unwrap().to_value();
+        assert_eq!(Value::Number(3.0), value);
     }
 }
