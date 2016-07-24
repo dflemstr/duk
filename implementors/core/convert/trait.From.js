@@ -1,0 +1,10 @@
+(function() {var implementors = {};
+implementors["libc"] = [];implementors["duk"] = ["impl <a class='trait' href='https://doc.rust-lang.org/nightly/core/convert/trait.From.html' title='core::convert::From'>From</a>&lt;<a class='enum' href='duk/enum.ErrorKind.html' title='duk::ErrorKind'>ErrorKind</a>&gt; for <a class='struct' href='duk/struct.Error.html' title='duk::Error'>Error</a>","impl&lt;'a&gt; <a class='trait' href='https://doc.rust-lang.org/nightly/core/convert/trait.From.html' title='core::convert::From'>From</a>&lt;&amp;'a <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a>&gt; for <a class='struct' href='duk/struct.Error.html' title='duk::Error'>Error</a>","impl <a class='trait' href='https://doc.rust-lang.org/nightly/core/convert/trait.From.html' title='core::convert::From'>From</a>&lt;<a class='struct' href='https://doc.rust-lang.org/nightly/collections/string/struct.String.html' title='collections::string::String'>String</a>&gt; for <a class='struct' href='duk/struct.Error.html' title='duk::Error'>Error</a>","impl&lt;'a&gt; <a class='trait' href='https://doc.rust-lang.org/nightly/core/convert/trait.From.html' title='core::convert::From'>From</a>&lt;&amp;'a <a class='primitive' href='https://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a>&gt; for <a class='enum' href='duk/enum.ErrorKind.html' title='duk::ErrorKind'>ErrorKind</a>","impl <a class='trait' href='https://doc.rust-lang.org/nightly/core/convert/trait.From.html' title='core::convert::From'>From</a>&lt;<a class='struct' href='https://doc.rust-lang.org/nightly/collections/string/struct.String.html' title='collections::string::String'>String</a>&gt; for <a class='enum' href='duk/enum.ErrorKind.html' title='duk::ErrorKind'>ErrorKind</a>",];
+
+            if (window.register_implementors) {
+                window.register_implementors(implementors);
+            } else {
+                window.pending_implementors = implementors;
+            }
+        
+})()
