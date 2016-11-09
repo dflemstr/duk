@@ -867,4 +867,10 @@ extern "C" {
      -> duk_int_t;
     pub fn duk_dump_context_stdout(ctx: *mut duk_context);
     pub fn duk_dump_context_stderr(ctx: *mut duk_context);
+
+    // Add FileIO.readfile().
+    pub fn fileio_register(ctx: *mut duk_context);
+
+    // Add print();
+    pub fn duk_print_alert_init(ctx: *mut duk_context, flags: u32);
 }
