@@ -5,32 +5,56 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "duktape.h"
 
-/* Push file as a buffer. */
-void fileio_push_file_buffer(duk_context *ctx, const char *filename) {
+// Undefine DEBUG_FILEIO and recompile for more verbose debugging.
+//#define DEBUG_FILEIO
+
+static int fileio_readfile(duk_context *ctx) {
+	const char *filename = duk_to_string(ctx, 0);
 	FILE *f = NULL;
 	long len;
 	void *buf;
 	size_t got;
 
 	if (!filename) {
+                fprintf(stderr, "%s:%d filename was null?\n", __FILE__, __LINE__);
 		goto error;
 	}
+
+#ifdef DEBUG_FILEIO
+        fprintf(stderr, "%s:%d filename is %s\n", __FILE__, __LINE__, filename);
+#endif
 
 	f = fopen(filename, "rb");
 	if (!f) {
-		goto error;
+#ifdef DEBUG_FILEIO
+            fprintf(stderr, "%s:%d failed to open %s.\n", __FILE__, __LINE__, filename);
+            char cwd[1024];
+            if (getcwd(cwd, sizeof(cwd)) != NULL) {
+                fprintf(stderr, "Current working directory is %s\n", cwd);
+            } else {
+                perror("Could not get current working directory?");
+            }
+#endif
+            goto error;
 	}
 
 	if (fseek(f, 0, SEEK_END) != 0) {
+#ifdef DEBUG_FILEIO
+                fprintf(stderr, "%s:%d failed to seek to the end?\n", __FILE__, __LINE__);
+#endif
 		goto error;
 	}
 
 	len = ftell(f);
 
 	if (fseek(f, 0, SEEK_SET) != 0) {
+#ifdef DEBUG_FILEIO
+                fprintf(stderr, "%s:%d failed to seek_set?", __FILE__, __LINE__);
+#endif
 		goto error;
 	}
 
@@ -38,35 +62,29 @@ void fileio_push_file_buffer(duk_context *ctx, const char *filename) {
 
 	got = fread(buf, 1, len, f);
 	if (got != (size_t) len) {
-		duk_pop(ctx);
+#ifdef DEBUG_FILEIO
+                fprintf(stderr, "%s:%d read %ld, expected %ld", __FILE__, __LINE__, (long)got, len);
+#endif
 		goto error;
 	}
 
 	fclose(f);
-	return;
+	f = NULL;
+
+#ifdef DEBUG_FILEIO
+	fprintf(stderr, "%s:%d read all %ld characters from %s\n", __FILE__, __LINE__, len, filename);
+#endif
+	return 1;
 
  error:
+#ifdef DEBUG_FILEIO
+        perror("Error was");
+#endif
 	if (f) {
 		fclose(f);
 	}
-	duk_push_undefined(ctx);
-}
 
-/* Push file as a string. */
-void fileio_push_file_string(duk_context *ctx, const char *filename) {
-	fileio_push_file_buffer(ctx, filename);
-	if (duk_is_buffer(ctx, -1)) {
-		duk_to_string(ctx, -1);
-	}
-}
-
-static int fileio_readfile(duk_context *ctx) {
-	const char *filename = duk_to_string(ctx, 0);
-	fileio_push_file_buffer(ctx, filename);
-	if (!duk_is_buffer(ctx, -1)) {
-		return DUK_RET_ERROR;
-	}
-	return 1;
+	return DUK_RET_ERROR;
 }
 
 static duk_function_list_entry fileio_funcs[] = {

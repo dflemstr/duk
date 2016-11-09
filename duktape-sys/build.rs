@@ -30,6 +30,11 @@ fn main() {
     config.file("duktape/src/duktape.c");
     config.file("duktape/extras/logging/duk_logging.c");
     config.file("duktape/extras/module-node/duk_module_node.c");
+    // Add FileIo.readfile
+    config.file("duktape/examples/eventloop/fileio.c");
+    // Add print
+    config.file("duktape/extras/print-alert/duk_print_alert.c");
+
     config.file("src/wrapper.c");
 
     config.compile("libduktape.a");

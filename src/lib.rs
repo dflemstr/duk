@@ -182,6 +182,12 @@ impl Context {
 
                     duktape_sys::duk_module_node_init(raw);
 
+                    // Add FileIO.readfile().
+                    duktape_sys::fileio_register(raw);
+                    
+                    // print() and alert()
+                    duktape_sys::duk_print_alert_init(raw, 0);
+                    
                     (Some(resolver_ptr), Some(loader_ptr))
                 },
             (_, _) => (None, None),
