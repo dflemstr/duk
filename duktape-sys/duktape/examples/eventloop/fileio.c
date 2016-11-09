@@ -10,7 +10,7 @@
 #include "duktape.h"
 
 // Undefine DEBUG_FILEIO and recompile for more verbose debugging.
-#define DEBUG_FILEIO
+//#define DEBUG_FILEIO
 
 static int fileio_readfile(duk_context *ctx) {
 	const char *filename = duk_to_string(ctx, 0);
