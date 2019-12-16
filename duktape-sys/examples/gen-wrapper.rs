@@ -11,34 +11,23 @@ fn main() {
 }
 
 fn write_ffi() -> io::Result<()> {
-    use std::io::Write;
-
     let bindings = bindgen::Builder::default()
         .header("src/wrapper.h")
         .clang_arg("-Iduktape/src")
         .clang_arg("-Iduktape/extras/logging")
         .clang_arg("-Iduktape/extras/module-node")
         .clang_arg("-std=c99")
-        .match_pat("duk_config.h")
-        .match_pat("duk_logging.h")
-        .match_pat("duk_module_node.h")
-        .match_pat("duktape.h")
-        .match_pat("wrapper.h")
-        .forbid_unknown_types()
+        .whitelist_function("duk_.*")
+        .whitelist_function("DUK_.*")
+        .whitelist_var("duk_.*")
+        .whitelist_var("DUK_.*")
+        .whitelist_type("duk_.*")
+        .whitelist_type("DUK_.*")
         .derive_debug(true)
-        .rust_enums(true)
-        .builtins()
         .generate()
         .unwrap();
 
-    let code = bindings.to_string();
-
-    let pos = code.find(']').unwrap() + 1;
-    let (prelude, rest) = code.split_at(pos);
-    let fixed_code = format!("{}{}{}", prelude, EXTRA, rest);
-
-    let mut ffi_file = fs::File::create("src/ffi.rs")?;
-    ffi_file.write_all(fixed_code.as_bytes())?;
+    bindings.write_to_file("src/ffi.rs")?;
 
     Ok(())
 }
@@ -110,34 +99,6 @@ where
 {
     iter.collect::<Vec<_>>().join(sep)
 }
-
-const EXTRA: &'static str = r"
-
-use libc::*;
-
-pub type int_least8_t = int8_t;
-pub type int_least16_t = int16_t;
-pub type int_least32_t = int32_t;
-pub type int_least64_t = int64_t;
-
-pub type uint_least8_t = uint8_t;
-pub type uint_least16_t = uint16_t;
-pub type uint_least32_t = uint32_t;
-pub type uint_least64_t = uint64_t;
-
-pub type int_fast8_t = int8_t;
-pub type int_fast16_t = int16_t;
-pub type int_fast32_t = int32_t;
-pub type int_fast64_t = int64_t;
-
-pub type uint_fast8_t = uint8_t;
-pub type uint_fast16_t = uint16_t;
-pub type uint_fast32_t = uint32_t;
-pub type uint_fast64_t = uint64_t;
-
-// TODO: map this to something reasonable?
-pub type va_list = [u8; 0];
-";
 
 const MACRO_CONSTANTS: &'static [(&'static str, &'static str)] = &[
     ("duk_uint_t", "DUK_VERSION"),

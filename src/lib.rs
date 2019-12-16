@@ -24,8 +24,8 @@ use std::slice;
 use std::str;
 use std::sync::atomic;
 
-pub type ModuleResolver = Fn(String, String) -> String;
-pub type ModuleLoader = Fn(String) -> Option<String>;
+pub type ModuleResolver = dyn Fn(String, String) -> String;
+pub type ModuleLoader = dyn Fn(String) -> Option<String>;
 
 /// A context corresponding to a thread of script execution.
 pub struct Context {
@@ -201,27 +201,27 @@ impl Context {
         // Stack: [ global .Duktape .Logger .prototype ]
 
         duk_push_c_function(ctx, Some(log_handler), DUK_VARARGS);
-        duk_set_magic(ctx, -1, DUK_LOG_TRACE);
+        duk_set_magic(ctx, -1, DUK_LOG_TRACE as i32);
         duk_put_prop_string(ctx, -2, nul_str(b"trace\0"));
 
         duk_push_c_function(ctx, Some(log_handler), DUK_VARARGS);
-        duk_set_magic(ctx, -1, DUK_LOG_DEBUG);
+        duk_set_magic(ctx, -1, DUK_LOG_DEBUG as i32);
         duk_put_prop_string(ctx, -2, nul_str(b"debug\0"));
 
         duk_push_c_function(ctx, Some(log_handler), DUK_VARARGS);
-        duk_set_magic(ctx, -1, DUK_LOG_INFO);
+        duk_set_magic(ctx, -1, DUK_LOG_INFO as i32);
         duk_put_prop_string(ctx, -2, nul_str(b"info\0"));
 
         duk_push_c_function(ctx, Some(log_handler), DUK_VARARGS);
-        duk_set_magic(ctx, -1, DUK_LOG_WARN);
+        duk_set_magic(ctx, -1, DUK_LOG_WARN as i32);
         duk_put_prop_string(ctx, -2, nul_str(b"warn\0"));
 
         duk_push_c_function(ctx, Some(log_handler), DUK_VARARGS);
-        duk_set_magic(ctx, -1, DUK_LOG_ERROR);
+        duk_set_magic(ctx, -1, DUK_LOG_ERROR as i32);
         duk_put_prop_string(ctx, -2, nul_str(b"error\0"));
 
         duk_push_c_function(ctx, Some(log_handler), DUK_VARARGS);
-        duk_set_magic(ctx, -1, DUK_LOG_FATAL);
+        duk_set_magic(ctx, -1, DUK_LOG_FATAL as i32);
         duk_put_prop_string(ctx, -2, nul_str(b"fatal\0"));
 
         // Stack: [ global .Duktape .Logger .prototype ]
@@ -306,15 +306,16 @@ impl Context {
     /// arguments.
     ///
     /// Behaves like `global_object().call_method(name, args)`.
-    pub fn call_global(&self, name: &str, args: &[&Argument]) -> Result<Reference> {
+    pub fn call_global(&self, name: &str, args: &[&dyn Argument]) -> Result<Reference> {
         self.global_object().call_method(name, args)
     }
 
     #[cfg(test)]
     pub fn assert_clean(&self) {
         unsafe {
-            assert!(
-                duktape_sys::duk_get_top(self.raw) == 0,
+            assert_eq!(
+                duktape_sys::duk_get_top(self.raw),
+                0,
                 "context stack is not empty"
             );
         }
@@ -401,7 +402,7 @@ impl<'a> Reference<'a> {
                 let msg = ffi::CString::new("value is not object coercible").unwrap();
                 duktape_sys::duk_push_error_object(
                     self.ctx.raw,
-                    duktape_sys::DUK_ERR_TYPE_ERROR,
+                    duktape_sys::DUK_ERR_TYPE_ERROR as i32,
                     msg.as_ptr(),
                 );
                 Err(self.ctx.pop_error())
@@ -418,7 +419,7 @@ impl<'a> Reference<'a> {
     /// When the function executes, the `this` binding is set to `undefined` or the global object,
     /// depending on if the function is strict or not.  Calling this function is equivalent to doing
     /// `myfunc.call(undefined, args)` in Javascript.
-    pub fn call(&self, args: &[&Argument]) -> Result<Reference<'a>> {
+    pub fn call(&self, args: &[&dyn Argument]) -> Result<Reference<'a>> {
         self.with_value(|| {
             unsafe {
                 duktape_sys::duk_dup_top(self.ctx.raw); // Because pcall consumes the stack
@@ -433,7 +434,11 @@ impl<'a> Reference<'a> {
     }
 
     /// Calls the function that this reference points to with an explicit `this` binding.
-    pub fn call_with_this(&self, this: &Argument, args: &[&Argument]) -> Result<Reference<'a>> {
+    pub fn call_with_this(
+        &self,
+        this: &dyn Argument,
+        args: &[&dyn Argument],
+    ) -> Result<Reference<'a>> {
         self.with_value(|| {
             unsafe {
                 duktape_sys::duk_dup_top(self.ctx.raw); // Because pcall consumes the stack
@@ -455,7 +460,7 @@ impl<'a> Reference<'a> {
     ///
     /// The `this` binding will be set to the object during the execution of the function.  Calling
     /// this function is equivalent to doing `myobj[name](args...)` in Javascript.
-    pub fn call_method(&self, name: &str, args: &[&Argument]) -> Result<Reference<'a>> {
+    pub fn call_method(&self, name: &str, args: &[&dyn Argument]) -> Result<Reference<'a>> {
         self.with_value(|| unsafe {
             let obj_idx = duktape_sys::duk_get_top_index(self.ctx.raw);
             duktape_sys::duk_push_lstring(self.ctx.raw, name.as_ptr() as *const i8, name.len());
@@ -476,7 +481,7 @@ impl<'a> Reference<'a> {
 
     /// Calls the function that this reference points to as a constructor, with the specified
     /// arguments.
-    pub fn new(&self, args: &[&Argument]) -> Result<Reference<'a>> {
+    pub fn new(&self, args: &[&dyn Argument]) -> Result<Reference<'a>> {
         self.with_value(|| {
             unsafe {
                 duktape_sys::duk_dup_top(self.ctx.raw); // Because pnew consumes the stack
@@ -551,17 +556,17 @@ impl Value {
 
     unsafe fn get(ctx: *mut duktape_sys::duk_context, index: duktape_sys::duk_idx_t) -> Value {
         let t = duktape_sys::duk_get_type(ctx, index);
-        if t == duktape_sys::DUK_TYPE_UNDEFINED {
+        if t == duktape_sys::DUK_TYPE_UNDEFINED as i32 {
             Value::Undefined
-        } else if t == duktape_sys::DUK_TYPE_NULL {
+        } else if t == duktape_sys::DUK_TYPE_NULL as i32 {
             Value::Null
-        } else if t == duktape_sys::DUK_TYPE_BOOLEAN {
+        } else if t == duktape_sys::DUK_TYPE_BOOLEAN as i32 {
             Value::Boolean(duktape_sys::duk_get_boolean(ctx, index) != 0)
-        } else if t == duktape_sys::DUK_TYPE_NUMBER {
+        } else if t == duktape_sys::DUK_TYPE_NUMBER as i32 {
             Value::Number(duktape_sys::duk_get_number(ctx, index))
-        } else if t == duktape_sys::DUK_TYPE_STRING {
+        } else if t == duktape_sys::DUK_TYPE_STRING as i32 {
             Value::String(get_string(ctx, index))
-        } else if t == duktape_sys::DUK_TYPE_OBJECT {
+        } else if t == duktape_sys::DUK_TYPE_OBJECT as i32 {
             if 1 == duktape_sys::duk_is_array(ctx, index) {
                 let len = duktape_sys::duk_get_length(ctx, index);
                 let mut array = Vec::with_capacity(len);
@@ -588,14 +593,14 @@ impl Value {
 
                 Value::Object(object)
             }
-        } else if t == duktape_sys::DUK_TYPE_BUFFER {
-            let mut size = mem::uninitialized();
+        } else if t == duktape_sys::DUK_TYPE_BUFFER as i32 {
+            let mut size = 0;
             let data = duktape_sys::duk_get_buffer(ctx, index, &mut size);
             let slice = slice::from_raw_parts(data as *const u8, size);
             Value::Bytes(slice.to_vec())
-        } else if t == duktape_sys::DUK_TYPE_POINTER {
+        } else if t == duktape_sys::DUK_TYPE_POINTER as i32 {
             Value::Foreign("pointer")
-        } else if t == duktape_sys::DUK_TYPE_LIGHTFUNC {
+        } else if t == duktape_sys::DUK_TYPE_LIGHTFUNC as i32 {
             Value::Foreign("lightfunc")
         } else {
             panic!("Unmapped type {}", t)
@@ -656,7 +661,7 @@ impl Error {
         let e = duktape_sys::duk_get_error_code(ctx, index);
         let kind = JsErrorKind::from_raw(e);
         let message = get_string_property(ctx, index, "message").unwrap_or_else(|| {
-            let mut len = mem::uninitialized();
+            let mut len = 0;
             let data = duktape_sys::duk_safe_to_lstring(ctx, index, &mut len);
             let msg_slice = slice::from_raw_parts(data as *const u8, len);
             String::from(str::from_utf8(msg_slice).unwrap())
@@ -691,21 +696,21 @@ impl Error {
 
 impl JsErrorKind {
     unsafe fn from_raw(e: duktape_sys::duk_errcode_t) -> JsErrorKind {
-        if e == duktape_sys::DUK_ERR_NONE {
+        if e == duktape_sys::DUK_ERR_NONE as i32 {
             JsErrorKind::Generic
-        } else if e == duktape_sys::DUK_ERR_ERROR {
+        } else if e == duktape_sys::DUK_ERR_ERROR as i32 {
             JsErrorKind::Error
-        } else if e == duktape_sys::DUK_ERR_EVAL_ERROR {
+        } else if e == duktape_sys::DUK_ERR_EVAL_ERROR as i32 {
             JsErrorKind::Eval
-        } else if e == duktape_sys::DUK_ERR_RANGE_ERROR {
+        } else if e == duktape_sys::DUK_ERR_RANGE_ERROR as i32 {
             JsErrorKind::Range
-        } else if e == duktape_sys::DUK_ERR_REFERENCE_ERROR {
+        } else if e == duktape_sys::DUK_ERR_REFERENCE_ERROR as i32 {
             JsErrorKind::Reference
-        } else if e == duktape_sys::DUK_ERR_SYNTAX_ERROR {
+        } else if e == duktape_sys::DUK_ERR_SYNTAX_ERROR as i32 {
             JsErrorKind::Syntax
-        } else if e == duktape_sys::DUK_ERR_TYPE_ERROR {
+        } else if e == duktape_sys::DUK_ERR_TYPE_ERROR as i32 {
             JsErrorKind::Type
-        } else if e == duktape_sys::DUK_ERR_URI_ERROR {
+        } else if e == duktape_sys::DUK_ERR_URI_ERROR as i32 {
             JsErrorKind::Uri
         } else {
             panic!("Unmapped error code {}", e)
@@ -714,7 +719,7 @@ impl JsErrorKind {
 }
 
 unsafe fn get_string(ctx: *mut duktape_sys::duk_context, index: duktape_sys::duk_idx_t) -> String {
-    let mut len = mem::uninitialized();
+    let mut len = 0;
     let data = duktape_sys::duk_get_lstring(ctx, index, &mut len);
     let slice = slice::from_raw_parts(data as *const u8, len);
     String::from(str::from_utf8(slice).unwrap())
@@ -813,7 +818,7 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
 
     // The function magic is the log level that this handler should handle.
     let level = duk_get_current_magic(ctx);
-    if level < DUK_LOG_TRACE || level > DUK_LOG_FATAL {
+    if level < DUK_LOG_TRACE as i32 || level > DUK_LOG_FATAL as i32 {
         log::warn!("log_handler called with invalid level: {}", level);
         return 0;
     }
@@ -833,13 +838,13 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
         return 0;
     }
 
-    let rust_level = if level == DUK_LOG_TRACE {
+    let rust_level = if level == DUK_LOG_TRACE as i32 {
         log::Level::Trace
-    } else if level == DUK_LOG_DEBUG {
+    } else if level == DUK_LOG_DEBUG as i32 {
         log::Level::Debug
-    } else if level == DUK_LOG_INFO {
+    } else if level == DUK_LOG_INFO as i32 {
         log::Level::Info
-    } else if level == DUK_LOG_WARN {
+    } else if level == DUK_LOG_WARN as i32 {
         log::Level::Warn
     } else {
         log::Level::Error
@@ -863,7 +868,7 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
             duk_replace(ctx, i);
         }
 
-        let mut arg_len = mem::uninitialized();
+        let mut arg_len = 0;
 
         duk_to_lstring(ctx, i, &mut arg_len);
 
@@ -872,7 +877,7 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
 
     // Stack: [ arg0String ... argNString this loggerLevel loggerName ]
 
-    let mut name_len = mem::uninitialized();
+    let mut name_len = 0;
     let name_data = duk_get_lstring(ctx, -1, &mut name_len);
     let name_slice = slice::from_raw_parts(name_data as *const u8, name_len);
     let name_str = str::from_utf8(name_slice).unwrap();
@@ -883,7 +888,7 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
     msg.push(':');
 
     for i in 0..nargs {
-        let mut arg_len = mem::uninitialized();
+        let mut arg_len = 0;
         let arg_data = duk_get_lstring(ctx, i, &mut arg_len);
         let slice = slice::from_raw_parts(arg_data as *const u8, arg_len);
         let arg_str = str::from_utf8(slice).unwrap();
@@ -1283,7 +1288,10 @@ mod tests {
             Value::Object(obj),
             Value::Bytes(bytes),
         ];
-        let args = values.iter().map(|v| v as &Argument).collect::<Vec<_>>();
+        let args = values
+            .iter()
+            .map(|v| v as &dyn Argument)
+            .collect::<Vec<_>>();
         let value = ctx.call_global("foo", &args).unwrap().to_value();
         assert_eq!(Value::Array(values.to_vec()), value);
         ctx.assert_clean();
