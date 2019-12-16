@@ -254,7 +254,7 @@ impl Context {
     /// match result {
     ///   Err(duk::Error::Js { raw: duk::JsError { kind, ref message, .. } }) => {
     ///     assert_eq!(duk::JsErrorKind::Type, kind);
-    ///     assert_eq!("undefined not callable", message);
+    ///     assert_eq!("undefined not callable (property \'foo\' of [object Object])", message);
     ///   },
     ///   _ => unreachable!(),
     /// }
@@ -1062,15 +1062,6 @@ mod tests {
     }
 
     #[test]
-    fn eval_string_buffer() {
-        let _ = env_logger::try_init();
-        let ctx = Context::new();
-        let value = ctx.eval_string("Duktape.Buffer('abc')").unwrap().to_value();
-        assert_eq!(Value::Bytes("abc".as_bytes().to_vec()), value);
-        ctx.assert_clean();
-    }
-
-    #[test]
     fn eval_string_error_generic() {
         let _ = env_logger::try_init();
         let ctx = Context::new();
@@ -1318,7 +1309,11 @@ mod tests {
         let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.call_global("foo", &[]);
-        assert_js_error(&value, JsErrorKind::Type, "undefined not callable");
+        assert_js_error(
+            &value,
+            JsErrorKind::Type,
+            "undefined not callable (property \'foo\' of [object global])",
+        );
         ctx.assert_clean();
     }
 

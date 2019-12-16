@@ -178,11 +178,6 @@ const duk_int_t DUK_HINT_NUMBER;
 const duk_uint_t DUK_ENUM_INCLUDE_NONENUMERABLE;
 #pragma pop_macro("DUK_ENUM_INCLUDE_NONENUMERABLE")
 
-#pragma push_macro("DUK_ENUM_INCLUDE_INTERNAL")
-#undef DUK_ENUM_INCLUDE_INTERNAL
-const duk_uint_t DUK_ENUM_INCLUDE_INTERNAL;
-#pragma pop_macro("DUK_ENUM_INCLUDE_INTERNAL")
-
 #pragma push_macro("DUK_ENUM_OWN_PROPERTIES_ONLY")
 #undef DUK_ENUM_OWN_PROPERTIES_ONLY
 const duk_uint_t DUK_ENUM_OWN_PROPERTIES_ONLY;

@@ -46,17 +46,17 @@ static duk_ret_t duk__logger_constructor(duk_context *ctx) {
 		 * issue now.
 		 */
 
-		/* With the logging framework being an extra now, we need
-		 * Duktape.act() which is stashed to make sure it's available
-		 * here.  This is a rather slow approach but it only affects
-		 * logger initialization.
-		 */
-
-		duk_push_global_stash(ctx);
-		duk_get_prop_string(ctx, -1, "\xff" "logger:getName");
-		duk_call(ctx, 0 /*nargs*/);
-		duk_replace(ctx, 0);
-		/* leave stash on top intentionally, no need to pop */
+		duk_inspect_callstack_entry(ctx, -2);
+		if (duk_is_object(ctx, -1)) {
+			if (duk_get_prop_string(ctx, -1, "function")) {
+				if (duk_get_prop_string(ctx, -1, "fileName")) {
+					if (duk_is_string(ctx, -1)) {
+						duk_replace(ctx, 0);
+					}
+				}
+			}
+		}
+		/* Leave values on stack on purpose, ignored below. */
 
 		/* Stripping the filename might be a good idea
 		 * ("/foo/bar/quux.js" -> logger name "quux"),
@@ -109,7 +109,7 @@ static duk_ret_t duk__logger_prototype_raw(duk_context *ctx) {
 	const char *data;
 	duk_size_t data_len;
 
-	data = (const char *) duk_require_buffer(ctx, 0, &data_len);
+	data = (const char *) duk_require_buffer_data(ctx, 0, &data_len);
 	fwrite((const void *) data, 1, data_len, stderr);
 	fputc((int) '\n', stderr);
 #if defined(DUK_LOGGING_FLUSH)
@@ -182,9 +182,9 @@ static duk_ret_t duk__logger_prototype_log_shared(duk_context *ctx) {
 	now = duk_get_now(ctx);
 	duk_time_to_components(ctx, now, &comp);
 	sprintf((char *) date_buf, "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
-	        (int) comp.year, (int) comp.month, (int) comp.day,
-	        (int) comp.hour, (int) comp.minute, (int) comp.second,
-	        (int) comp.millisecond);
+	        (int) comp.year, (int) comp.month + 1, (int) comp.day,
+	        (int) comp.hours, (int) comp.minutes, (int) comp.seconds,
+	        (int) comp.milliseconds);
 
 	date_len = strlen((const char *) date_buf);
 
@@ -334,8 +334,9 @@ void duk_logging_init(duk_context *ctx, duk_uint_t flags) {
 
 	/* [ ... func Duktape.Logger Duktape.Logger.prototype ] */
 
+	duk_push_string(ctx, "name");
 	duk_push_string(ctx, "Logger");
-	duk_put_prop_string(ctx, -3, "name");
+	duk_def_prop(ctx, -4, DUK_DEFPROP_HAVE_VALUE | DUK_DEFPROP_FORCE);
 
 	duk_dup_top(ctx);
 	duk_put_prop_string(ctx, -2, "constructor");
@@ -371,24 +372,6 @@ void duk_logging_init(duk_context *ctx, duk_uint_t flags) {
 	/* XXX: when using ROM built-ins, "Duktape" is read-only by default so
 	 * setting Duktape.Logger will now fail.
 	 */
-
-	/* Stash some values so that we can look them up later even if they
-	 * have changed since init.  Add a getName() helper into the stash
-	 * for determining logger names based on the calling function
-	 * (uses Duktape.act() now).
-	 */
-	duk_push_global_stash(ctx);
-	duk_dup(ctx, -3);
-	duk_put_prop_string(ctx, -2, "\xff" "logger:constructor");
-	duk_eval_string(ctx,
-		"(function(){"
-		    "var A=Duktape.act;"  /* ensure doesn't change after init */
-		    "return function getName(){"
-		        "try{return A(-4).function.fileName;}catch(e){}"  /* undefined -> inherit "anon" */
-		    "};"
-		"})()");
-	duk_put_prop_string(ctx, -2, "\xff" "logger:getName");
-	duk_pop(ctx);
 
 	/* [ ... func Duktape.Logger Duktape.Logger.prototype ] */
 

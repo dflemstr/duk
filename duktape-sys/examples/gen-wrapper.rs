@@ -136,7 +136,6 @@ const MACRO_CONSTANTS: &'static [(&'static str, &'static str)] = &[
     ("duk_int_t", "DUK_HINT_STRING"),
     ("duk_int_t", "DUK_HINT_NUMBER"),
     ("duk_uint_t", "DUK_ENUM_INCLUDE_NONENUMERABLE"),
-    ("duk_uint_t", "DUK_ENUM_INCLUDE_INTERNAL"),
     ("duk_uint_t", "DUK_ENUM_OWN_PROPERTIES_ONLY"),
     ("duk_uint_t", "DUK_ENUM_ARRAY_INDICES_ONLY"),
     ("duk_uint_t", "DUK_ENUM_SORT_ARRAY_INDICES"),

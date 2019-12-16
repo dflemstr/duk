@@ -8,23 +8,27 @@
  *
  *  Compiling 'duk' with debugger support using MSVC (Visual Studio):
  *
- *    > cl /W3 /O2 /Feduk.exe
- *          /DDUK_OPT_DEBUGGER_SUPPORT /DDUK_OPT_INTERRUPT_COUNTER
+ *    > python2 tools\configure.py \
+ *          --output-directory prep
+ *          -DDUK_USE_DEBUGGER_SUPPORT -DDUK_USE_INTERRUPT_COUNTER
+ *    > cl /W3 /O2 /Feduk.exe \
  *          /DDUK_CMDLINE_DEBUGGER_SUPPORT
- *          /Iexamples\debug-trans-socket /Isrc
+ *          /Iexamples\debug-trans-socket /Iprep
  *          examples\cmdline\duk_cmdline.c
  *          examples\debug-trans-socket\duk_trans_socket_windows.c
- *          src\duktape.c
+ *          prep\duktape.c
  *
  *  With MinGW:
  *
+ *    $ python2 tools\configure.py \
+ *          --output-directory prep
+ *          -DDUK_USE_DEBUGGER_SUPPORT -DDUK_USE_INTERRUPT_COUNTER
  *    $ gcc -oduk.exe -Wall -O2 \
- *          -DDUK_OPT_DEBUGGER_SUPPORT -DDUK_OPT_INTERRUPT_COUNTER \
  *          -DDUK_CMDLINE_DEBUGGER_SUPPORT \
- *          -Iexamples/debug-trans-socket -Isrc \
+ *          -Iexamples/debug-trans-socket -Iprep \
  *          examples/cmdline/duk_cmdline.c \
  *          examples/debug-trans-socket/duk_trans_socket_windows.c \
- *          src/duktape.c -lm -lws2_32
+ *          prep/duktape.c -lm -lws2_32
  */
 
 #undef UNICODE
@@ -47,6 +51,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "duktape.h"
+#include "duk_trans_socket.h"
 
 #if defined(_MSC_VER)
 #pragma comment (lib, "Ws2_32.lib")
@@ -246,7 +251,7 @@ duk_size_t duk_trans_socket_read_cb(void *udata, char *buffer, duk_size_t length
 	 * timeout here to recover from "black hole" disconnects.
 	 */
 
-	ret = recv(client_sock, (void *) buffer, (int) length, 0);
+	ret = recv(client_sock, buffer, (int) length, 0);
 	if (ret < 0) {
 		fprintf(stderr, "%s: debug read failed, error %d, closing connection\n",
 		        __FILE__, ret);
@@ -310,7 +315,7 @@ duk_size_t duk_trans_socket_write_cb(void *udata, const char *buffer, duk_size_t
 	 * timeout here to recover from "black hole" disconnects.
 	 */
 
-	ret = send(client_sock, (const void *) buffer, (int) length, 0);
+	ret = send(client_sock, buffer, (int) length, 0);
 	if (ret <= 0 || ret > (int) length) {
 		fprintf(stderr, "%s: debug write failed, ret %d, closing connection\n",
 		        __FILE__, ret);

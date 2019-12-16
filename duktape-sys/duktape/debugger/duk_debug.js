@@ -107,9 +107,9 @@ debugCommandNames.forEach(function (k, i) {
 });
 
 // Duktape heaphdr type constants, must match C headers
-var DUK_HTYPE_STRING = 1;
-var DUK_HTYPE_OBJECT = 2;
-var DUK_HTYPE_BUFFER = 3;
+var DUK_HTYPE_STRING = 0;
+var DUK_HTYPE_OBJECT = 1;
+var DUK_HTYPE_BUFFER = 2;
 
 // Duktape internal class numbers, must match C headers
 var dukClassNameMeta = yaml.load('duk_classnames.yaml');
@@ -117,11 +117,8 @@ var dukClassNames = dukClassNameMeta.class_names;
 
 // Bytecode opcode/extraop metadata
 var dukOpcodes = yaml.load('duk_opcodes.yaml');
-if (dukOpcodes.opcodes.length != 64) {
+if (dukOpcodes.opcodes.length != 256) {
     throw new Error('opcode metadata length incorrect');
-}
-if (dukOpcodes.extra.length != 256) {
-    throw new Error('extraop metadata length incorrect');
 }
 
 /*
@@ -420,7 +417,7 @@ RateLimited.prototype.trigger = function () {
 /*
  *  Source file manager
  *
- *  Scan the list of search directories for Ecmascript source files and
+ *  Scan the list of search directories for ECMAScript source files and
  *  build an index of them.  Provides a mechanism to find a source file
  *  based on a raw 'fileName' property provided by the debug target, and
  *  to provide a file list for the web UI.
@@ -435,27 +432,36 @@ RateLimited.prototype.trigger = function () {
 function SourceFileManager(directories) {
     this.directories = directories;
     this.extensions = { '.js': true, '.jsm': true };
-    this.files;
+    this.fileMap = {};  // filename as seen by debug target -> file path
+    this.files = [];    // filenames as seen by debug target
 }
 
 SourceFileManager.prototype.scan = function () {
     var _this = this;
-    var fileMap = {};   // absFn -> true
+    var fileMap = {};   // relative path -> file path
     var files;
 
     this.directories.forEach(function (dir) {
         console.log('Scanning source files: ' + dir);
         try {
             recursiveReadSync(dir).forEach(function (fn) {
-                var absFn = path.normalize(path.join(dir, fn));   // './foo/bar.js' -> 'foo/bar.js'
-                var ent;
+                // Example: dir     ../../tests
+                //          normFn  ../../tests/foo/bar.js
+                //          relFn   foo/bar.js
+                var normDir = path.normalize(dir);
+                var normFn = path.normalize(fn);
+                var relFn = path.relative(normDir, normFn);
 
-                if (fs.existsSync(absFn) &&
-                    fs.lstatSync(absFn).isFile() &&
-                    _this.extensions[path.extname(fn)]) {
+                if (fs.existsSync(normFn) && fs.lstatSync(normFn).isFile() &&
+                    _this.extensions[path.extname(normFn)]) {
                     // We want the fileMap to contain the filename relative to
-                    // the search dir root.
-                    fileMap[fn] = true;
+                    // the search dir root.  First directory containing a
+                    // certail relFn wins.
+                    if (relFn in fileMap) {
+                        console.log('Found', relFn, 'multiple times, first match wins');
+                    } else {
+                        fileMap[relFn] = normFn;
+                    }
                 }
             });
         } catch (e) {
@@ -466,6 +472,8 @@ SourceFileManager.prototype.scan = function () {
     files = Object.keys(fileMap);
     files.sort();
     this.files = files;
+
+    this.fileMap = fileMap;
 
     console.log('Found ' + files.length + ' source files in ' + this.directories.length + ' search directories');
 };
@@ -483,6 +491,9 @@ SourceFileManager.prototype.search = function (fileName) {
     // assigned by selecting a file from a dropdown populated by scanning
     // the filesystem for available sources and there's no way of knowing
     // if the debug target uses the exact same name.
+    //
+    // We intentionally allow any files from the search paths, not just
+    // those scanned to this.fileMap.
 
     function tryLookup() {
         var i, fn, data;
@@ -1067,44 +1078,49 @@ Debugger.prototype.decodeBytecodeFromBuffer = function (buf, consts, funcs) {
             ins = buf.readInt32BE(i) >>> 0;
         }
 
-        op = dukOpcodes.opcodes[ins & 0x3f];
-        if (op.extra) {
-            op = dukOpcodes.extra[(ins >> 6) & 0xff];
-        }
+        op = dukOpcodes.opcodes[ins & 0xff];
 
         args = [];
         comments = [];
         if (op.args) {
             for (j = 0, m = op.args.length; j < m; j++) {
+                var A = (ins >>> 8) & 0xff;
+                var B = (ins >>> 16) & 0xff;
+                var C = (ins >>> 24) & 0xff;
+                var BC = (ins >>> 16) & 0xffff;
+                var ABC = (ins >>> 8) & 0xffffff;
+                var Bconst = op & 0x01;
+                var Cconst = op & 0x02;
+
                 switch (op.args[j]) {
-                case 'A_R':   args.push('r' + ((ins >>> 6) & 0xff)); break;
-                case 'A_RI':  args.push('r' + ((ins >>> 6) & 0xff) + '(indirect)'); break;
-                case 'A_C':   args.push('c' + ((ins >>> 6) & 0xff)); break;
-                case 'A_H':   args.push('0x' + ((ins >>> 6) & 0xff).toString(16)); break;
-                case 'A_I':   args.push(((ins >>> 6) & 0xff).toString(10)); break;
-                case 'A_B':   args.push(((ins >>> 6) & 0xff) ? 'true' : 'false'); break;
-                case 'B_RC':  args.push((ins & (1 << 22) ? 'c' : 'r') + ((ins >>> 14) & 0x0ff)); break;
-                case 'B_R':   args.push('r' + ((ins >>> 14) & 0x1ff)); break;
-                case 'B_RI':  args.push('r' + ((ins >>> 14) & 0x1ff) + '(indirect)'); break;
-                case 'B_C':   args.push('c' + ((ins >>> 14) & 0x1ff)); break;
-                case 'B_H':   args.push('0x' + ((ins >>> 14) & 0x1ff).toString(16)); break;
-                case 'B_I':   args.push(((ins >>> 14) & 0x1ff).toString(10)); break;
-                case 'C_RC':  args.push((ins & (1 << 31) ? 'c' : 'r') + ((ins >>> 23) & 0x0ff)); break;
-                case 'C_R':   args.push('r' + ((ins >>> 23) & 0x1ff)); break;
-                case 'C_RI':  args.push('r' + ((ins >>> 23) & 0x1ff) + '(indirect)'); break;
-                case 'C_C':   args.push('c' + ((ins >>> 23) & 0x1ff)); break;
-                case 'C_H':   args.push('0x' + ((ins >>> 23) & 0x1ff).toString(16)); break;
-                case 'C_I':   args.push(((ins >>> 23) & 0x1ff).toString(10)); break;
-                case 'BC_R':  args.push('r' + ((ins >>> 14) & 0x3ffff)); break;
-                case 'BC_C':  args.push('c' + ((ins >>> 14) & 0x3ffff)); break;
-                case 'BC_H':  args.push('0x' + ((ins >>> 14) & 0x3ffff).toString(16)); break;
-                case 'BC_I':  args.push(((ins >>> 14) & 0x3ffff).toString(10)); break;
-                case 'ABC_H': args.push(((ins >>> 6) & 0x03ffffff).toString(16)); break;
-                case 'ABC_I': args.push(((ins >>> 6) & 0x03ffffff).toString(10)); break;
-                case 'BC_LDINT': args.push(((ins >>> 14) & 0x3ffff) - (1 << 17)); break;
-                case 'BC_LDINTX': args.push(((ins >>> 14) & 0x3ffff) - 0); break;  // no bias in LDINTX
+                case 'A_R':   args.push('r' + A); break;
+                case 'A_RI':  args.push('r' + A + '(indirect)'); break;
+                case 'A_C':   args.push('c' + A); break;
+                case 'A_H':   args.push('0x' + A.toString(16)); break;
+                case 'A_I':   args.push(A.toString(10)); break;
+                case 'A_B':   args.push(A ? 'true' : 'false'); break;
+                case 'B_RC':  args.push((Bconst ? 'c' : 'r') + B); break;
+                case 'B_R':   args.push('r' + B); break;
+                case 'B_RI':  args.push('r' + B + '(indirect)'); break;
+                case 'B_C':   args.push('c' + B); break;
+                case 'B_H':   args.push('0x' + B.toString(16)); break;
+                case 'B_I':   args.push(B.toString(10)); break;
+                case 'C_RC':  args.push((Cconst ? 'c' : 'r') + C); break;
+                case 'C_R':   args.push('r' + C); break;
+                case 'C_RI':  args.push('r' + C + '(indirect)'); break;
+                case 'C_C':   args.push('c' + C); break;
+                case 'C_H':   args.push('0x' + C.toString(16)); break;
+                case 'C_I':   args.push(C.toString(10)); break;
+                case 'BC_R':  args.push('r' + BC); break;
+                case 'BC_C':  args.push('c' + BC); break;
+                case 'BC_H':  args.push('0x' + BC.toString(16)); break;
+                case 'BC_I':  args.push(BC.toString(10)); break;
+                case 'ABC_H': args.push(ABC.toString(16)); break;
+                case 'ABC_I': args.push(ABC.toString(10)); break;
+                case 'BC_LDINT': args.push(BC - (1 << 15)); break;
+                case 'BC_LDINTX': args.push(BC - 0); break;  // no bias in LDINTX
                 case 'ABC_JUMP': {
-                    var pc_add = ((ins >>> 6) & 0x03ffffff) - (1 << 25) + 1;  // pc is preincremented before adding
+                    var pc_add = ABC - (1 << 23) + 1;  // pc is preincremented before adding
                     var pc_dst = pc + pc_add;
                     args.push(pc_dst + ' (' + (pc_add >= 0 ? '+' : '') + pc_add + ')');
                     break;
@@ -1122,9 +1138,9 @@ Debugger.prototype.decodeBytecodeFromBuffer = function (buf, consts, funcs) {
         }
 
         if (args.length > 0) {
-            str = sprintf('%05d %08x   %-10s %s', pc, ins, op.name, args.join(', '));
+            str = sprintf('%05d %08x   %-12s %s', pc, ins, op.name, args.join(', '));
         } else {
-            str = sprintf('%05d %08x   %-10s', pc, ins, op.name);
+            str = sprintf('%05d %08x   %-12s', pc, ins, op.name);
         }
         if (comments.length > 0) {
             str = sprintf('%-44s ; %s', str, comments.join(', '));
@@ -1215,14 +1231,14 @@ Debugger.prototype.sendBasicInfoRequest = function () {
 
 Debugger.prototype.sendGetVarRequest = function (varname, level) {
     var _this = this;
-    return this.sendRequest([ DVAL_REQ, CMD_GETVAR, varname, (typeof level === 'number' ? level : -1), DVAL_EOM ]).then(function (msg) {
+    return this.sendRequest([ DVAL_REQ, CMD_GETVAR, (typeof level === 'number' ? level : -1), varname, DVAL_EOM ]).then(function (msg) {
         return { found: msg[1] === 1, value: msg[2] };
     });
 };
 
 Debugger.prototype.sendPutVarRequest = function (varname, varvalue, level) {
     var _this = this;
-    return this.sendRequest([ DVAL_REQ, CMD_PUTVAR, varname, varvalue, (typeof level === 'number' ? level : -1), DVAL_EOM ]);
+    return this.sendRequest([ DVAL_REQ, CMD_PUTVAR, (typeof level === 'number' ? level : -1), varname, varvalue, DVAL_EOM ]);
 };
 
 Debugger.prototype.sendInvalidCommandTestRequest = function () {
@@ -1319,7 +1335,13 @@ Debugger.prototype.sendResumeRequest = function () {
 
 Debugger.prototype.sendEvalRequest = function (evalInput, level) {
     var _this = this;
-    return this.sendRequest([ DVAL_REQ, CMD_EVAL, evalInput, (typeof level === 'number' ? level : -1), DVAL_EOM ]).then(function (msg) {
+    // Use explicit level if given.  If no level is given, use null if the call
+    // stack is empty, -1 otherwise.  This works well when we're paused and the
+    // callstack information is not liable to change before we do an Eval.
+    if (typeof level !== 'number') {
+        level = this.callstack && this.callstack.length > 0 ? -1 : null;
+    }
+    return this.sendRequest([ DVAL_REQ, CMD_EVAL, level, evalInput, DVAL_EOM ]).then(function (msg) {
         return { error: msg[1] === 1 /*error*/, value: msg[2] };
     });
 };
@@ -1399,7 +1421,7 @@ Debugger.prototype.sendDumpHeapRequest = function () {
 Debugger.prototype.sendGetBytecodeRequest = function () {
     var _this = this;
 
-    return this.sendRequest([ DVAL_REQ, CMD_GETBYTECODE, DVAL_EOM ]).then(function (msg) {
+    return this.sendRequest([ DVAL_REQ, CMD_GETBYTECODE, -1 /* level; could be other than -1 too */, DVAL_EOM ]).then(function (msg) {
         var idx = 1;
         var nconst;
         var nfunc;
