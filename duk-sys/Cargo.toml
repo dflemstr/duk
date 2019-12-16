@@ -6,7 +6,7 @@ documentation = "https://dflemstr.github.io/duk/duktape_sys"
 homepage = "https://dflemstr.github.io/duk/duktape_sys"
 keywords = ["javascript", "js", "ecmascript", "duktape"]
 license = "MIT"
-name = "duktape-sys"
+name = "duk-sys"
 repository = "https://github.com/dflemstr/duk"
 version = "0.1.0"
 

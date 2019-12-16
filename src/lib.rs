@@ -29,7 +29,7 @@ pub type ModuleLoader = dyn Fn(String) -> Option<String>;
 
 /// A context corresponding to a thread of script execution.
 pub struct Context {
-    raw: *mut duktape_sys::duk_context,
+    raw: *mut duk_sys::duk_context,
     next_stash_idx: atomic::AtomicUsize,
     module_resolver: Option<*mut Box<ModuleResolver>>,
     module_loader: Option<*mut Box<ModuleLoader>>,
@@ -52,7 +52,7 @@ pub trait Argument {
 #[derive(Debug)]
 pub struct Reference<'a> {
     ctx: &'a Context,
-    stash_idx: duktape_sys::duk_uarridx_t,
+    stash_idx: duk_sys::duk_uarridx_t,
 }
 
 /// A Javascript/Ecmascript value that exists in the Rust world.
@@ -143,7 +143,7 @@ impl Context {
 
     fn from_builder(builder: ContextBuilder) -> Context {
         let raw = unsafe {
-            duktape_sys::duk_create_heap(None, None, None, ptr::null_mut(), Some(fatal_handler))
+            duk_sys::duk_create_heap(None, None, None, ptr::null_mut(), Some(fatal_handler))
         };
 
         unsafe {
@@ -154,27 +154,23 @@ impl Context {
             (Some(module_resolver), Some(module_loader)) => unsafe {
                 let resolver_ptr = Box::into_raw(Box::new(module_resolver));
                 let loader_ptr = Box::into_raw(Box::new(module_loader));
-                duktape_sys::duk_push_object(raw);
+                duk_sys::duk_push_object(raw);
 
-                duktape_sys::duk_push_c_function(
+                duk_sys::duk_push_c_function(
                     raw,
                     Some(module_resolve_handler),
-                    duktape_sys::DUK_VARARGS,
+                    duk_sys::DUK_VARARGS,
                 );
-                duktape_sys::duk_push_pointer(raw, resolver_ptr as *mut os::raw::c_void);
-                duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"closure\0"));
-                duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"resolve\0"));
+                duk_sys::duk_push_pointer(raw, resolver_ptr as *mut os::raw::c_void);
+                duk_sys::duk_put_prop_string(raw, -2, nul_str(b"closure\0"));
+                duk_sys::duk_put_prop_string(raw, -2, nul_str(b"resolve\0"));
 
-                duktape_sys::duk_push_c_function(
-                    raw,
-                    Some(module_load_handler),
-                    duktape_sys::DUK_VARARGS,
-                );
-                duktape_sys::duk_push_pointer(raw, loader_ptr as *mut os::raw::c_void);
-                duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"closure\0"));
-                duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"load\0"));
+                duk_sys::duk_push_c_function(raw, Some(module_load_handler), duk_sys::DUK_VARARGS);
+                duk_sys::duk_push_pointer(raw, loader_ptr as *mut os::raw::c_void);
+                duk_sys::duk_put_prop_string(raw, -2, nul_str(b"closure\0"));
+                duk_sys::duk_put_prop_string(raw, -2, nul_str(b"load\0"));
 
-                duktape_sys::duk_module_node_init(raw);
+                duk_sys::duk_module_node_init(raw);
 
                 (Some(resolver_ptr), Some(loader_ptr))
             },
@@ -190,8 +186,8 @@ impl Context {
     }
 
     #[cfg(feature = "logging")]
-    unsafe fn setup_logging(ctx: *mut duktape_sys::duk_context) {
-        use duktape_sys::*;
+    unsafe fn setup_logging(ctx: *mut duk_sys::duk_context) {
+        use duk_sys::*;
         duk_logging_init(ctx, 0);
 
         duk_push_global_object(ctx);
@@ -229,7 +225,7 @@ impl Context {
     }
 
     #[cfg(not(feature = "logging"))]
-    unsafe fn setup_logging(_: *mut duktape_sys::duk_context) {
+    unsafe fn setup_logging(_: *mut duk_sys::duk_context) {
         // No-op
     }
 
@@ -263,7 +259,7 @@ impl Context {
         let ptr = string.as_ptr() as *const i8;
         let len = string.len();
         unsafe {
-            let ret = duktape_sys::duk_peval_lstring(self.raw, ptr, len);
+            let ret = duk_sys::duk_peval_lstring(self.raw, ptr, len);
             self.pop_reference_or_error(ret)
         }
     }
@@ -274,11 +270,11 @@ impl Context {
         let filename_ptr = filename.as_ptr() as *const i8;
         let string_ptr = string.as_ptr() as *const i8;
         unsafe {
-            duktape_sys::duk_push_lstring(self.raw, filename_ptr, filename.len());
-            let flags = duktape_sys::DUK_COMPILE_EVAL
-                | duktape_sys::DUK_COMPILE_NOSOURCE
-                | duktape_sys::DUK_COMPILE_SAFE;
-            let ret = duktape_sys::duk_eval_raw(self.raw, string_ptr, string.len(), flags);
+            duk_sys::duk_push_lstring(self.raw, filename_ptr, filename.len());
+            let flags = duk_sys::DUK_COMPILE_EVAL
+                | duk_sys::DUK_COMPILE_NOSOURCE
+                | duk_sys::DUK_COMPILE_SAFE;
+            let ret = duk_sys::duk_eval_raw(self.raw, string_ptr, string.len(), flags);
             self.pop_reference_or_error(ret)
         }
     }
@@ -289,7 +285,7 @@ impl Context {
         let str_path = path.to_string_lossy();
         let ffi_str = ffi::CString::new(&*str_path).unwrap();
         unsafe {
-            let ret = duktape_sys::duk_peval_file(self.raw, ffi_str.as_ptr());
+            let ret = duk_sys::duk_peval_file(self.raw, ffi_str.as_ptr());
             self.pop_reference_or_error(ret)
         }
     }
@@ -297,7 +293,7 @@ impl Context {
     /// Retrieves a reference to the global object.
     pub fn global_object(&self) -> Reference {
         unsafe {
-            duktape_sys::duk_push_global_object(self.raw);
+            duk_sys::duk_push_global_object(self.raw);
             self.pop_reference()
         }
     }
@@ -314,23 +310,23 @@ impl Context {
     pub fn assert_clean(&self) {
         unsafe {
             assert_eq!(
-                duktape_sys::duk_get_top(self.raw),
+                duk_sys::duk_get_top(self.raw),
                 0,
                 "context stack is not empty"
             );
         }
     }
 
-    fn gen_stash_idx(&self) -> duktape_sys::duk_uarridx_t {
-        self.next_stash_idx.fetch_add(1, atomic::Ordering::Relaxed) as duktape_sys::duk_uarridx_t
+    fn gen_stash_idx(&self) -> duk_sys::duk_uarridx_t {
+        self.next_stash_idx.fetch_add(1, atomic::Ordering::Relaxed) as duk_sys::duk_uarridx_t
     }
 
     unsafe fn pop_reference(&self) -> Reference {
         let idx = self.gen_stash_idx();
-        duktape_sys::duk_push_heap_stash(self.raw);
-        duktape_sys::duk_dup(self.raw, -2);
-        duktape_sys::duk_put_prop_index(self.raw, -2, idx);
-        duktape_sys::duk_pop_2(self.raw);
+        duk_sys::duk_push_heap_stash(self.raw);
+        duk_sys::duk_dup(self.raw, -2);
+        duk_sys::duk_put_prop_index(self.raw, -2, idx);
+        duk_sys::duk_pop_2(self.raw);
 
         Reference {
             ctx: self,
@@ -340,11 +336,11 @@ impl Context {
 
     unsafe fn pop_error(&self) -> Error {
         let e = Error::get(self.raw, -1);
-        duktape_sys::duk_pop(self.raw);
+        duk_sys::duk_pop(self.raw);
         e
     }
 
-    unsafe fn pop_reference_or_error(&self, ret: duktape_sys::duk_ret_t) -> Result<Reference> {
+    unsafe fn pop_reference_or_error(&self, ret: duk_sys::duk_ret_t) -> Result<Reference> {
         if ret == 0 {
             Ok(self.pop_reference())
         } else {
@@ -361,7 +357,7 @@ impl fmt::Debug for Context {
 
 impl Drop for Context {
     fn drop(&mut self) {
-        unsafe { duktape_sys::duk_destroy_heap(self.raw) };
+        unsafe { duk_sys::duk_destroy_heap(self.raw) };
         if let Some(ptr) = self.module_resolver {
             drop(unsafe { Box::from_raw(ptr) });
         }
@@ -398,16 +394,16 @@ impl<'a> Reference<'a> {
     pub fn get(&self, name: &str) -> Result<Reference<'a>> {
         let ffi_str = ffi::CString::new(name).unwrap();
         self.with_value(|| unsafe {
-            if 0 == duktape_sys::duk_is_object_coercible(self.ctx.raw, -1) {
+            if 0 == duk_sys::duk_is_object_coercible(self.ctx.raw, -1) {
                 let msg = ffi::CString::new("value is not object coercible").unwrap();
-                duktape_sys::duk_push_error_object(
+                duk_sys::duk_push_error_object(
                     self.ctx.raw,
-                    duktape_sys::DUK_ERR_TYPE_ERROR as i32,
+                    duk_sys::DUK_ERR_TYPE_ERROR as i32,
                     msg.as_ptr(),
                 );
                 Err(self.ctx.pop_error())
             } else {
-                duktape_sys::duk_get_prop_string(self.ctx.raw, -1, ffi_str.as_ptr());
+                duk_sys::duk_get_prop_string(self.ctx.raw, -1, ffi_str.as_ptr());
                 Ok(self.ctx.pop_reference())
             }
         })
@@ -422,12 +418,11 @@ impl<'a> Reference<'a> {
     pub fn call(&self, args: &[&dyn Argument]) -> Result<Reference<'a>> {
         self.with_value(|| {
             unsafe {
-                duktape_sys::duk_dup_top(self.ctx.raw); // Because pcall consumes the stack
+                duk_sys::duk_dup_top(self.ctx.raw); // Because pcall consumes the stack
                 for arg in args {
                     arg.push_to_context(self.ctx);
                 }
-                let ret =
-                    duktape_sys::duk_pcall(self.ctx.raw, args.len() as duktape_sys::duk_idx_t);
+                let ret = duk_sys::duk_pcall(self.ctx.raw, args.len() as duk_sys::duk_idx_t);
                 self.ctx.pop_reference_or_error(ret)
             }
         })
@@ -441,16 +436,13 @@ impl<'a> Reference<'a> {
     ) -> Result<Reference<'a>> {
         self.with_value(|| {
             unsafe {
-                duktape_sys::duk_dup_top(self.ctx.raw); // Because pcall consumes the stack
+                duk_sys::duk_dup_top(self.ctx.raw); // Because pcall consumes the stack
                 this.push_to_context(self.ctx);
 
                 for arg in args {
                     arg.push_to_context(self.ctx);
                 }
-                let ret = duktape_sys::duk_pcall_method(
-                    self.ctx.raw,
-                    args.len() as duktape_sys::duk_idx_t,
-                );
+                let ret = duk_sys::duk_pcall_method(self.ctx.raw, args.len() as duk_sys::duk_idx_t);
                 self.ctx.pop_reference_or_error(ret)
             }
         })
@@ -462,18 +454,15 @@ impl<'a> Reference<'a> {
     /// this function is equivalent to doing `myobj[name](args...)` in Javascript.
     pub fn call_method(&self, name: &str, args: &[&dyn Argument]) -> Result<Reference<'a>> {
         self.with_value(|| unsafe {
-            let obj_idx = duktape_sys::duk_get_top_index(self.ctx.raw);
-            duktape_sys::duk_push_lstring(self.ctx.raw, name.as_ptr() as *const i8, name.len());
+            let obj_idx = duk_sys::duk_get_top_index(self.ctx.raw);
+            duk_sys::duk_push_lstring(self.ctx.raw, name.as_ptr() as *const i8, name.len());
 
             for arg in args {
                 arg.push_to_context(self.ctx);
             }
 
-            let ret = duktape_sys::duk_pcall_prop(
-                self.ctx.raw,
-                obj_idx,
-                args.len() as duktape_sys::duk_idx_t,
-            );
+            let ret =
+                duk_sys::duk_pcall_prop(self.ctx.raw, obj_idx, args.len() as duk_sys::duk_idx_t);
 
             self.ctx.pop_reference_or_error(ret)
         })
@@ -484,11 +473,11 @@ impl<'a> Reference<'a> {
     pub fn new(&self, args: &[&dyn Argument]) -> Result<Reference<'a>> {
         self.with_value(|| {
             unsafe {
-                duktape_sys::duk_dup_top(self.ctx.raw); // Because pnew consumes the stack
+                duk_sys::duk_dup_top(self.ctx.raw); // Because pnew consumes the stack
                 for arg in args {
                     arg.push_to_context(self.ctx);
                 }
-                let ret = duktape_sys::duk_pnew(self.ctx.raw, args.len() as duktape_sys::duk_idx_t);
+                let ret = duk_sys::duk_pnew(self.ctx.raw, args.len() as duk_sys::duk_idx_t);
                 self.ctx.pop_reference_or_error(ret)
             }
         })
@@ -508,13 +497,13 @@ impl<'a> Reference<'a> {
     }
 
     unsafe fn push(&self) {
-        duktape_sys::duk_push_heap_stash(self.ctx.raw);
-        duktape_sys::duk_get_prop_index(self.ctx.raw, -1, self.stash_idx);
-        duktape_sys::duk_remove(self.ctx.raw, -2);
+        duk_sys::duk_push_heap_stash(self.ctx.raw);
+        duk_sys::duk_get_prop_index(self.ctx.raw, -1, self.stash_idx);
+        duk_sys::duk_remove(self.ctx.raw, -2);
     }
 
     unsafe fn pop(&self) {
-        duktape_sys::duk_pop(self.ctx.raw);
+        duk_sys::duk_pop(self.ctx.raw);
     }
 }
 
@@ -537,9 +526,9 @@ impl<'a> PartialEq for Reference<'a> {
 impl<'a> Drop for Reference<'a> {
     fn drop(&mut self) {
         unsafe {
-            duktape_sys::duk_push_heap_stash(self.ctx.raw);
-            duktape_sys::duk_del_prop_index(self.ctx.raw, -1, self.stash_idx);
-            duktape_sys::duk_pop(self.ctx.raw);
+            duk_sys::duk_push_heap_stash(self.ctx.raw);
+            duk_sys::duk_del_prop_index(self.ctx.raw, -1, self.stash_idx);
+            duk_sys::duk_pop(self.ctx.raw);
         }
     }
 }
@@ -554,98 +543,98 @@ impl Value {
         }
     }
 
-    unsafe fn get(ctx: *mut duktape_sys::duk_context, index: duktape_sys::duk_idx_t) -> Value {
-        let t = duktape_sys::duk_get_type(ctx, index);
-        if t == duktape_sys::DUK_TYPE_UNDEFINED as i32 {
+    unsafe fn get(ctx: *mut duk_sys::duk_context, index: duk_sys::duk_idx_t) -> Value {
+        let t = duk_sys::duk_get_type(ctx, index);
+        if t == duk_sys::DUK_TYPE_UNDEFINED as i32 {
             Value::Undefined
-        } else if t == duktape_sys::DUK_TYPE_NULL as i32 {
+        } else if t == duk_sys::DUK_TYPE_NULL as i32 {
             Value::Null
-        } else if t == duktape_sys::DUK_TYPE_BOOLEAN as i32 {
-            Value::Boolean(duktape_sys::duk_get_boolean(ctx, index) != 0)
-        } else if t == duktape_sys::DUK_TYPE_NUMBER as i32 {
-            Value::Number(duktape_sys::duk_get_number(ctx, index))
-        } else if t == duktape_sys::DUK_TYPE_STRING as i32 {
+        } else if t == duk_sys::DUK_TYPE_BOOLEAN as i32 {
+            Value::Boolean(duk_sys::duk_get_boolean(ctx, index) != 0)
+        } else if t == duk_sys::DUK_TYPE_NUMBER as i32 {
+            Value::Number(duk_sys::duk_get_number(ctx, index))
+        } else if t == duk_sys::DUK_TYPE_STRING as i32 {
             Value::String(get_string(ctx, index))
-        } else if t == duktape_sys::DUK_TYPE_OBJECT as i32 {
-            if 1 == duktape_sys::duk_is_array(ctx, index) {
-                let len = duktape_sys::duk_get_length(ctx, index);
+        } else if t == duk_sys::DUK_TYPE_OBJECT as i32 {
+            if 1 == duk_sys::duk_is_array(ctx, index) {
+                let len = duk_sys::duk_get_length(ctx, index);
                 let mut array = Vec::with_capacity(len);
 
                 for i in 0..len {
-                    assert!(1 == duktape_sys::duk_get_prop_index(ctx, index, i as u32));
+                    assert!(1 == duk_sys::duk_get_prop_index(ctx, index, i as u32));
                     array.push(Value::get(ctx, -1));
-                    duktape_sys::duk_pop(ctx);
+                    duk_sys::duk_pop(ctx);
                 }
 
                 Value::Array(array)
             } else {
                 let mut object = collections::BTreeMap::new();
-                duktape_sys::duk_enum(ctx, -1, duktape_sys::DUK_ENUM_OWN_PROPERTIES_ONLY);
+                duk_sys::duk_enum(ctx, -1, duk_sys::DUK_ENUM_OWN_PROPERTIES_ONLY);
 
-                while 1 == duktape_sys::duk_next(ctx, -1, 1) {
+                while 1 == duk_sys::duk_next(ctx, -1, 1) {
                     let key = get_string(ctx, -2);
                     let value = Value::get(ctx, -1);
-                    duktape_sys::duk_pop_2(ctx);
+                    duk_sys::duk_pop_2(ctx);
                     object.insert(key, value);
                 }
 
-                duktape_sys::duk_pop(ctx);
+                duk_sys::duk_pop(ctx);
 
                 Value::Object(object)
             }
-        } else if t == duktape_sys::DUK_TYPE_BUFFER as i32 {
+        } else if t == duk_sys::DUK_TYPE_BUFFER as i32 {
             let mut size = 0;
-            let data = duktape_sys::duk_get_buffer(ctx, index, &mut size);
+            let data = duk_sys::duk_get_buffer(ctx, index, &mut size);
             let slice = slice::from_raw_parts(data as *const u8, size);
             Value::Bytes(slice.to_vec())
-        } else if t == duktape_sys::DUK_TYPE_POINTER as i32 {
+        } else if t == duk_sys::DUK_TYPE_POINTER as i32 {
             Value::Foreign("pointer")
-        } else if t == duktape_sys::DUK_TYPE_LIGHTFUNC as i32 {
+        } else if t == duk_sys::DUK_TYPE_LIGHTFUNC as i32 {
             Value::Foreign("lightfunc")
         } else {
             panic!("Unmapped type {}", t)
         }
     }
 
-    unsafe fn push(&self, ctx: *mut duktape_sys::duk_context) {
+    unsafe fn push(&self, ctx: *mut duk_sys::duk_context) {
         match *self {
-            Value::Undefined => duktape_sys::duk_push_undefined(ctx),
-            Value::Null => duktape_sys::duk_push_null(ctx),
+            Value::Undefined => duk_sys::duk_push_undefined(ctx),
+            Value::Null => duk_sys::duk_push_null(ctx),
             Value::Boolean(b) => {
                 let v = if b { 1 } else { 0 };
-                duktape_sys::duk_push_boolean(ctx, v);
+                duk_sys::duk_push_boolean(ctx, v);
             }
-            Value::Number(n) => duktape_sys::duk_push_number(ctx, n),
+            Value::Number(n) => duk_sys::duk_push_number(ctx, n),
             Value::String(ref string) => {
                 let data = string.as_ptr() as *const i8;
                 let len = string.len();
-                duktape_sys::duk_push_lstring(ctx, data, len);
+                duk_sys::duk_push_lstring(ctx, data, len);
             }
             Value::Array(ref array) => {
-                duktape_sys::duk_push_array(ctx);
+                duk_sys::duk_push_array(ctx);
                 for (i, elem) in array.iter().enumerate() {
                     elem.push(ctx);
-                    assert!(1 == duktape_sys::duk_put_prop_index(ctx, -2, i as u32));
+                    assert!(1 == duk_sys::duk_put_prop_index(ctx, -2, i as u32));
                 }
             }
             Value::Object(ref object) => {
-                duktape_sys::duk_push_object(ctx);
+                duk_sys::duk_push_object(ctx);
 
                 for (k, v) in object {
                     let k_data = k.as_ptr() as *const i8;
                     let k_len = k.len();
-                    duktape_sys::duk_push_lstring(ctx, k_data, k_len);
+                    duk_sys::duk_push_lstring(ctx, k_data, k_len);
                     v.push(ctx);
-                    duktape_sys::duk_put_prop(ctx, -3);
+                    duk_sys::duk_put_prop(ctx, -3);
                 }
             }
             Value::Bytes(ref bytes) => {
                 let len = bytes.len();
-                let data = duktape_sys::duk_push_fixed_buffer(ctx, len);
+                let data = duk_sys::duk_push_fixed_buffer(ctx, len);
 
                 ptr::copy(bytes.as_ptr(), data as *mut u8, len);
             }
-            Value::Foreign(_) => duktape_sys::duk_push_undefined(ctx),
+            Value::Foreign(_) => duk_sys::duk_push_undefined(ctx),
         }
     }
 }
@@ -657,12 +646,12 @@ impl Argument for Value {
 }
 
 impl Error {
-    unsafe fn get(ctx: *mut duktape_sys::duk_context, index: duktape_sys::duk_idx_t) -> Error {
-        let e = duktape_sys::duk_get_error_code(ctx, index);
+    unsafe fn get(ctx: *mut duk_sys::duk_context, index: duk_sys::duk_idx_t) -> Error {
+        let e = duk_sys::duk_get_error_code(ctx, index);
         let kind = JsErrorKind::from_raw(e);
         let message = get_string_property(ctx, index, "message").unwrap_or_else(|| {
             let mut len = 0;
-            let data = duktape_sys::duk_safe_to_lstring(ctx, index, &mut len);
+            let data = duk_sys::duk_safe_to_lstring(ctx, index, &mut len);
             let msg_slice = slice::from_raw_parts(data as *const u8, len);
             String::from(str::from_utf8(msg_slice).unwrap())
         });
@@ -695,22 +684,22 @@ impl Error {
 }
 
 impl JsErrorKind {
-    unsafe fn from_raw(e: duktape_sys::duk_errcode_t) -> JsErrorKind {
-        if e == duktape_sys::DUK_ERR_NONE as i32 {
+    unsafe fn from_raw(e: duk_sys::duk_errcode_t) -> JsErrorKind {
+        if e == duk_sys::DUK_ERR_NONE as i32 {
             JsErrorKind::Generic
-        } else if e == duktape_sys::DUK_ERR_ERROR as i32 {
+        } else if e == duk_sys::DUK_ERR_ERROR as i32 {
             JsErrorKind::Error
-        } else if e == duktape_sys::DUK_ERR_EVAL_ERROR as i32 {
+        } else if e == duk_sys::DUK_ERR_EVAL_ERROR as i32 {
             JsErrorKind::Eval
-        } else if e == duktape_sys::DUK_ERR_RANGE_ERROR as i32 {
+        } else if e == duk_sys::DUK_ERR_RANGE_ERROR as i32 {
             JsErrorKind::Range
-        } else if e == duktape_sys::DUK_ERR_REFERENCE_ERROR as i32 {
+        } else if e == duk_sys::DUK_ERR_REFERENCE_ERROR as i32 {
             JsErrorKind::Reference
-        } else if e == duktape_sys::DUK_ERR_SYNTAX_ERROR as i32 {
+        } else if e == duk_sys::DUK_ERR_SYNTAX_ERROR as i32 {
             JsErrorKind::Syntax
-        } else if e == duktape_sys::DUK_ERR_TYPE_ERROR as i32 {
+        } else if e == duk_sys::DUK_ERR_TYPE_ERROR as i32 {
             JsErrorKind::Type
-        } else if e == duktape_sys::DUK_ERR_URI_ERROR as i32 {
+        } else if e == duk_sys::DUK_ERR_URI_ERROR as i32 {
             JsErrorKind::Uri
         } else {
             panic!("Unmapped error code {}", e)
@@ -718,42 +707,42 @@ impl JsErrorKind {
     }
 }
 
-unsafe fn get_string(ctx: *mut duktape_sys::duk_context, index: duktape_sys::duk_idx_t) -> String {
+unsafe fn get_string(ctx: *mut duk_sys::duk_context, index: duk_sys::duk_idx_t) -> String {
     let mut len = 0;
-    let data = duktape_sys::duk_get_lstring(ctx, index, &mut len);
+    let data = duk_sys::duk_get_lstring(ctx, index, &mut len);
     let slice = slice::from_raw_parts(data as *const u8, len);
     String::from(str::from_utf8(slice).unwrap())
 }
 
 unsafe fn get_string_property(
-    ctx: *mut duktape_sys::duk_context,
-    index: duktape_sys::duk_idx_t,
+    ctx: *mut duk_sys::duk_context,
+    index: duk_sys::duk_idx_t,
     name: &str,
 ) -> Option<String> {
     let ffi_name = ffi::CString::new(name).unwrap();
-    if 1 == duktape_sys::duk_get_prop_string(ctx, index, ffi_name.as_ptr()) {
+    if 1 == duk_sys::duk_get_prop_string(ctx, index, ffi_name.as_ptr()) {
         let result = get_string(ctx, -1);
-        duktape_sys::duk_pop(ctx);
+        duk_sys::duk_pop(ctx);
 
         Some((*result).to_owned())
     } else {
-        duktape_sys::duk_pop(ctx);
+        duk_sys::duk_pop(ctx);
         None
     }
 }
 
 unsafe fn get_number_property(
-    ctx: *mut duktape_sys::duk_context,
-    index: duktape_sys::duk_idx_t,
+    ctx: *mut duk_sys::duk_context,
+    index: duk_sys::duk_idx_t,
     name: &str,
 ) -> Option<f64> {
     let ffi_name = ffi::CString::new(name).unwrap();
-    if 1 == duktape_sys::duk_get_prop_string(ctx, index, ffi_name.as_ptr()) {
-        let result = duktape_sys::duk_get_number(ctx, -1);
-        duktape_sys::duk_pop(ctx);
+    if 1 == duk_sys::duk_get_prop_string(ctx, index, ffi_name.as_ptr()) {
+        let result = duk_sys::duk_get_number(ctx, -1);
+        duk_sys::duk_pop(ctx);
         Some(result)
     } else {
-        duktape_sys::duk_pop(ctx);
+        duk_sys::duk_pop(ctx);
         None
     }
 }
@@ -762,19 +751,17 @@ unsafe fn nul_str(data: &[u8]) -> *const os::raw::c_char {
     ffi::CStr::from_bytes_with_nul_unchecked(data).as_ptr()
 }
 
-unsafe extern "C" fn module_resolve_handler(
-    ctx: *mut duktape_sys::duk_context,
-) -> duktape_sys::duk_ret_t {
+unsafe extern "C" fn module_resolve_handler(ctx: *mut duk_sys::duk_context) -> duk_sys::duk_ret_t {
     let requested_id = get_string(ctx, 0);
     let parent_id = get_string(ctx, 1);
-    duktape_sys::duk_pop_2(ctx);
+    duk_sys::duk_pop_2(ctx);
 
-    duktape_sys::duk_push_current_function(ctx);
-    duktape_sys::duk_get_prop_string(ctx, -1, nul_str(b"closure\0"));
-    let ptr = duktape_sys::duk_get_pointer(ctx, -1) as *mut Box<ModuleResolver>;
+    duk_sys::duk_push_current_function(ctx);
+    duk_sys::duk_get_prop_string(ctx, -1, nul_str(b"closure\0"));
+    let ptr = duk_sys::duk_get_pointer(ctx, -1) as *mut Box<ModuleResolver>;
     assert!(!ptr.is_null());
     let resolve = Box::from_raw(ptr);
-    duktape_sys::duk_pop_2(ctx);
+    duk_sys::duk_pop_2(ctx);
 
     // Ensure clear stack before entering the Rust wild west
     let result = resolve(requested_id, parent_id);
@@ -786,18 +773,16 @@ unsafe extern "C" fn module_resolve_handler(
     1
 }
 
-unsafe extern "C" fn module_load_handler(
-    ctx: *mut duktape_sys::duk_context,
-) -> duktape_sys::duk_ret_t {
+unsafe extern "C" fn module_load_handler(ctx: *mut duk_sys::duk_context) -> duk_sys::duk_ret_t {
     let resolved_id = get_string(ctx, 0);
-    duktape_sys::duk_pop_3(ctx); // Discard 'exports' and 'module'
+    duk_sys::duk_pop_3(ctx); // Discard 'exports' and 'module'
 
-    duktape_sys::duk_push_current_function(ctx);
-    duktape_sys::duk_get_prop_string(ctx, -1, nul_str(b"closure\0"));
-    let ptr = duktape_sys::duk_get_pointer(ctx, -1) as *mut Box<ModuleLoader>;
+    duk_sys::duk_push_current_function(ctx);
+    duk_sys::duk_get_prop_string(ctx, -1, nul_str(b"closure\0"));
+    let ptr = duk_sys::duk_get_pointer(ctx, -1) as *mut Box<ModuleLoader>;
     assert!(!ptr.is_null());
     let load = Box::from_raw(ptr);
-    duktape_sys::duk_pop_2(ctx);
+    duk_sys::duk_pop_2(ctx);
 
     let result = load(resolved_id);
 
@@ -813,8 +798,8 @@ unsafe extern "C" fn module_load_handler(
 }
 
 #[cfg(feature = "logging")]
-unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_sys::duk_ret_t {
-    use duktape_sys::*; // Because this function is essentially only calling C stuff
+unsafe extern "C" fn log_handler(ctx: *mut duk_sys::duk_context) -> duk_sys::duk_ret_t {
+    use duk_sys::*; // Because this function is essentially only calling C stuff
 
     // The function magic is the log level that this handler should handle.
     let level = duk_get_current_magic(ctx);

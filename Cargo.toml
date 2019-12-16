@@ -14,8 +14,8 @@ edition = "2018"
 [dependencies]
 failure = "0.1.6"
 
-[dependencies.duktape-sys]
-path = "duktape-sys"
+[dependencies.duk-sys]
+path = "duk-sys"
 version = "*"
 
 [dependencies.log]
@@ -26,11 +26,11 @@ version = "0.4.10"
 env_logger = "0.7.1"
 
 [features]
-debug = ["duktape-sys/debug"]
+debug = ["duk-sys/debug"]
 default = ["debug", "logging"]
 logging = ["log"]
-spam = ["duktape-sys/spam"]
-trace = ["duktape-sys/trace"]
+spam = ["duk-sys/spam"]
+trace = ["duk-sys/trace"]
 
 [workspace]
-members = ["duktape-sys"]
+members = ["duk-sys"]
