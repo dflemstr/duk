@@ -142,7 +142,7 @@ pub enum JsErrorKind {
 }
 
 #[cfg(all(test, feature = "logging"))]
-pub static mut LAST_LOG_LEVELS: &'static mut [Option<log::LogLevel>; 16] = &mut [None; 16];
+pub static mut LAST_LOG_LEVELS: &'static mut [Option<log::Level>; 16] = &mut [None; 16];
 
 impl Context {
     /// Creates a new context.
@@ -164,26 +164,33 @@ impl Context {
         }
 
         let (resolver_ptr, loader_ptr) = match (builder.module_resolver, builder.module_loader) {
-            (Some(module_resolver), Some(module_loader)) =>
-                unsafe {
-                    let resolver_ptr = Box::into_raw(Box::new(module_resolver));
-                    let loader_ptr = Box::into_raw(Box::new(module_loader));
-                    duktape_sys::duk_push_object(raw);
+            (Some(module_resolver), Some(module_loader)) => unsafe {
+                let resolver_ptr = Box::into_raw(Box::new(module_resolver));
+                let loader_ptr = Box::into_raw(Box::new(module_loader));
+                duktape_sys::duk_push_object(raw);
 
-                    duktape_sys::duk_push_c_function(raw, Some(module_resolve_handler), duktape_sys::DUK_VARARGS);
-                    duktape_sys::duk_push_pointer(raw, resolver_ptr as *mut os::raw::c_void);
-                    duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"closure\0"));
-                    duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"resolve\0"));
+                duktape_sys::duk_push_c_function(
+                    raw,
+                    Some(module_resolve_handler),
+                    duktape_sys::DUK_VARARGS,
+                );
+                duktape_sys::duk_push_pointer(raw, resolver_ptr as *mut os::raw::c_void);
+                duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"closure\0"));
+                duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"resolve\0"));
 
-                    duktape_sys::duk_push_c_function(raw, Some(module_load_handler), duktape_sys::DUK_VARARGS);
-                    duktape_sys::duk_push_pointer(raw, loader_ptr as *mut os::raw::c_void);
-                    duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"closure\0"));
-                    duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"load\0"));
+                duktape_sys::duk_push_c_function(
+                    raw,
+                    Some(module_load_handler),
+                    duktape_sys::DUK_VARARGS,
+                );
+                duktape_sys::duk_push_pointer(raw, loader_ptr as *mut os::raw::c_void);
+                duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"closure\0"));
+                duktape_sys::duk_put_prop_string(raw, -2, nul_str(b"load\0"));
 
-                    duktape_sys::duk_module_node_init(raw);
+                duktape_sys::duk_module_node_init(raw);
 
-                    (Some(resolver_ptr), Some(loader_ptr))
-                },
+                (Some(resolver_ptr), Some(loader_ptr))
+            },
             (_, _) => (None, None),
         };
 
@@ -286,8 +293,9 @@ impl Context {
         let string_ptr = string.as_ptr() as *const i8;
         unsafe {
             duktape_sys::duk_push_lstring(self.raw, filename_ptr, filename.len());
-            let flags = duktape_sys::DUK_COMPILE_EVAL | duktape_sys::DUK_COMPILE_NOSOURCE |
-                        duktape_sys::DUK_COMPILE_SAFE;
+            let flags = duktape_sys::DUK_COMPILE_EVAL
+                | duktape_sys::DUK_COMPILE_NOSOURCE
+                | duktape_sys::DUK_COMPILE_SAFE;
             let ret = duktape_sys::duk_eval_raw(self.raw, string_ptr, string.len(), flags);
             self.pop_reference_or_error(ret)
         }
@@ -323,8 +331,10 @@ impl Context {
     #[cfg(test)]
     pub fn assert_clean(&self) {
         unsafe {
-            assert!(duktape_sys::duk_get_top(self.raw) == 0,
-                    "context stack is not empty");
+            assert!(
+                duktape_sys::duk_get_top(self.raw) == 0,
+                "context stack is not empty"
+            );
         }
     }
 
@@ -379,7 +389,6 @@ impl Drop for Context {
 }
 
 impl ContextBuilder {
-
     pub fn with_module_resolver(mut self, module_resolver: Box<ModuleResolver>) -> Self {
         self.module_resolver = Some(module_resolver);
         self
@@ -398,25 +407,25 @@ impl ContextBuilder {
 impl<'a> Reference<'a> {
     /// Converts this reference to a `Value` which can be used for further processing by Rust code.
     pub fn to_value(&self) -> Value {
-        self.with_value(|| { unsafe { Value::get(self.ctx.raw, -1) } })
+        self.with_value(|| unsafe { Value::get(self.ctx.raw, -1) })
     }
 
     /// Gets the property with the specified key, provided that this reference points to something
     /// that is object coercible.
     pub fn get(&self, name: &str) -> Result<Reference<'a>> {
         let ffi_str = ffi::CString::new(name).unwrap();
-        self.with_value(|| {
-            unsafe {
-                if 0 == duktape_sys::duk_is_object_coercible(self.ctx.raw, -1) {
-                    let msg = ffi::CString::new("value is not object coercible").unwrap();
-                    duktape_sys::duk_push_error_object(self.ctx.raw,
-                                                       duktape_sys::DUK_ERR_TYPE_ERROR,
-                                                       msg.as_ptr());
-                    Err(self.ctx.pop_error())
-                } else {
-                    duktape_sys::duk_get_prop_string(self.ctx.raw, -1, ffi_str.as_ptr());
-                    Ok(self.ctx.pop_reference())
-                }
+        self.with_value(|| unsafe {
+            if 0 == duktape_sys::duk_is_object_coercible(self.ctx.raw, -1) {
+                let msg = ffi::CString::new("value is not object coercible").unwrap();
+                duktape_sys::duk_push_error_object(
+                    self.ctx.raw,
+                    duktape_sys::DUK_ERR_TYPE_ERROR,
+                    msg.as_ptr(),
+                );
+                Err(self.ctx.pop_error())
+            } else {
+                duktape_sys::duk_get_prop_string(self.ctx.raw, -1, ffi_str.as_ptr());
+                Ok(self.ctx.pop_reference())
             }
         })
     }
@@ -434,8 +443,8 @@ impl<'a> Reference<'a> {
                 for arg in args {
                     arg.push_to_context(self.ctx);
                 }
-                let ret = duktape_sys::duk_pcall(self.ctx.raw,
-                                                 args.len() as duktape_sys::duk_idx_t);
+                let ret =
+                    duktape_sys::duk_pcall(self.ctx.raw, args.len() as duktape_sys::duk_idx_t);
                 self.ctx.pop_reference_or_error(ret)
             }
         })
@@ -451,8 +460,10 @@ impl<'a> Reference<'a> {
                 for arg in args {
                     arg.push_to_context(self.ctx);
                 }
-                let ret = duktape_sys::duk_pcall_method(self.ctx.raw,
-                                                        args.len() as duktape_sys::duk_idx_t);
+                let ret = duktape_sys::duk_pcall_method(
+                    self.ctx.raw,
+                    args.len() as duktape_sys::duk_idx_t,
+                );
                 self.ctx.pop_reference_or_error(ret)
             }
         })
@@ -463,21 +474,21 @@ impl<'a> Reference<'a> {
     /// The `this` binding will be set to the object during the execution of the function.  Calling
     /// this function is equivalent to doing `myobj[name](args...)` in Javascript.
     pub fn call_method(&self, name: &str, args: &[&Argument]) -> Result<Reference<'a>> {
-        self.with_value(|| {
-            unsafe {
-                let obj_idx = duktape_sys::duk_get_top_index(self.ctx.raw);
-                duktape_sys::duk_push_lstring(self.ctx.raw, name.as_ptr() as *const i8, name.len());
+        self.with_value(|| unsafe {
+            let obj_idx = duktape_sys::duk_get_top_index(self.ctx.raw);
+            duktape_sys::duk_push_lstring(self.ctx.raw, name.as_ptr() as *const i8, name.len());
 
-                for arg in args {
-                    arg.push_to_context(self.ctx);
-                }
-
-                let ret = duktape_sys::duk_pcall_prop(self.ctx.raw,
-                                                      obj_idx,
-                                                      args.len() as duktape_sys::duk_idx_t);
-
-                self.ctx.pop_reference_or_error(ret)
+            for arg in args {
+                arg.push_to_context(self.ctx);
             }
+
+            let ret = duktape_sys::duk_pcall_prop(
+                self.ctx.raw,
+                obj_idx,
+                args.len() as duktape_sys::duk_idx_t,
+            );
+
+            self.ctx.pop_reference_or_error(ret)
         })
     }
 
@@ -498,7 +509,8 @@ impl<'a> Reference<'a> {
 
     #[inline]
     fn with_value<F, R>(&self, action: F) -> R
-        where F: FnOnce() -> R
+    where
+        F: FnOnce() -> R,
     {
         unsafe {
             self.push();
@@ -613,11 +625,7 @@ impl Value {
             Value::Undefined => duktape_sys::duk_push_undefined(ctx),
             Value::Null => duktape_sys::duk_push_null(ctx),
             Value::Boolean(b) => {
-                let v = if b {
-                    1
-                } else {
-                    0
-                };
+                let v = if b { 1 } else { 0 };
                 duktape_sys::duk_push_boolean(ctx, v);
             }
             Value::Number(n) => duktape_sys::duk_push_number(ctx, n),
@@ -671,17 +679,20 @@ impl Error {
             let msg_slice = slice::from_raw_parts(data as *const u8, len);
             String::from(str::from_utf8(msg_slice).unwrap())
         });
-        let file_name = get_string_property(ctx, index, "fileName").and_then(|n| if n.is_empty() {
-            None
-        } else {
-            Some(n)
+        let file_name = get_string_property(ctx, index, "fileName").and_then(|n| {
+            if n.is_empty() {
+                None
+            } else {
+                Some(n)
+            }
         });
-        let line_number = get_number_property(ctx, index, "lineNumber")
-            .and_then(|n| if n.is_nan() {
+        let line_number = get_number_property(ctx, index, "lineNumber").and_then(|n| {
+            if n.is_nan() {
                 None
             } else {
                 Some(n as usize)
-            });
+            }
+        });
         let stack = get_string_property(ctx, index, "stack");
 
         ErrorKind::Js(JsError {
@@ -690,7 +701,8 @@ impl Error {
             file_name: file_name,
             line_number: line_number,
             stack: stack,
-        }).into()
+        })
+        .into()
     }
 }
 
@@ -725,10 +737,11 @@ unsafe fn get_string(ctx: *mut duktape_sys::duk_context, index: duktape_sys::duk
     String::from(str::from_utf8(slice).unwrap())
 }
 
-unsafe fn get_string_property(ctx: *mut duktape_sys::duk_context,
-                              index: duktape_sys::duk_idx_t,
-                              name: &str)
-                              -> Option<String> {
+unsafe fn get_string_property(
+    ctx: *mut duktape_sys::duk_context,
+    index: duktape_sys::duk_idx_t,
+    name: &str,
+) -> Option<String> {
     let ffi_name = ffi::CString::new(name).unwrap();
     if 1 == duktape_sys::duk_get_prop_string(ctx, index, ffi_name.as_ptr()) {
         let result = get_string(ctx, -1);
@@ -741,10 +754,11 @@ unsafe fn get_string_property(ctx: *mut duktape_sys::duk_context,
     }
 }
 
-unsafe fn get_number_property(ctx: *mut duktape_sys::duk_context,
-                              index: duktape_sys::duk_idx_t,
-                              name: &str)
-                              -> Option<f64> {
+unsafe fn get_number_property(
+    ctx: *mut duktape_sys::duk_context,
+    index: duktape_sys::duk_idx_t,
+    name: &str,
+) -> Option<f64> {
     let ffi_name = ffi::CString::new(name).unwrap();
     if 1 == duktape_sys::duk_get_prop_string(ctx, index, ffi_name.as_ptr()) {
         let result = duktape_sys::duk_get_number(ctx, -1);
@@ -760,7 +774,9 @@ unsafe fn nul_str(data: &[u8]) -> *const os::raw::c_char {
     ffi::CStr::from_bytes_with_nul_unchecked(data).as_ptr()
 }
 
-unsafe extern "C" fn module_resolve_handler(ctx: *mut duktape_sys::duk_context) -> duktape_sys::duk_ret_t {
+unsafe extern "C" fn module_resolve_handler(
+    ctx: *mut duktape_sys::duk_context,
+) -> duktape_sys::duk_ret_t {
     let requested_id = get_string(ctx, 0);
     let parent_id = get_string(ctx, 1);
     duktape_sys::duk_pop_2(ctx);
@@ -782,7 +798,9 @@ unsafe extern "C" fn module_resolve_handler(ctx: *mut duktape_sys::duk_context) 
     1
 }
 
-unsafe extern "C" fn module_load_handler(ctx: *mut duktape_sys::duk_context) -> duktape_sys::duk_ret_t {
+unsafe extern "C" fn module_load_handler(
+    ctx: *mut duktape_sys::duk_context,
+) -> duktape_sys::duk_ret_t {
     let resolved_id = get_string(ctx, 0);
     duktape_sys::duk_pop_3(ctx); // Discard 'exports' and 'module'
 
@@ -833,15 +851,15 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
     }
 
     let rust_level = if level == DUK_LOG_TRACE {
-        log::LogLevel::Trace
+        log::Level::Trace
     } else if level == DUK_LOG_DEBUG {
-        log::LogLevel::Debug
+        log::Level::Debug
     } else if level == DUK_LOG_INFO {
-        log::LogLevel::Info
+        log::Level::Info
     } else if level == DUK_LOG_WARN {
-        log::LogLevel::Warn
+        log::Level::Warn
     } else {
-        log::LogLevel::Error
+        log::Level::Error
     };
 
     duk_get_prop_string(ctx, -2, nul_str(b"n\0"));
@@ -894,13 +912,18 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
     // For test
     stash_log(rust_level, &msg);
 
-    log!(target: &format!("{}:{}", module_path!(), name_str), rust_level, "{}",  msg);
+    log!(
+        target: &format!("{}:{}", module_path!(), name_str),
+        rust_level,
+        "{}",
+        msg
+    );
 
     0
 }
 
 #[cfg(all(test, feature = "logging"))]
-fn stash_log(level: log::LogLevel, msg: &str) {
+fn stash_log(level: log::Level, msg: &str) {
     println!("Logged: {} {}", level, msg);
     unsafe {
         for l in LAST_LOG_LEVELS.iter_mut() {
@@ -913,7 +936,7 @@ fn stash_log(level: log::LogLevel, msg: &str) {
 }
 
 #[cfg(all(not(test), feature = "logging"))]
-fn stash_log(_: log::LogLevel, _: &str) {
+fn stash_log(_: log::Level, _: &str) {
     // No-op
 }
 
@@ -935,10 +958,16 @@ mod tests {
     #[cfg(feature = "logging")]
     use log;
 
-    fn assert_js_error<A: fmt::Debug>(result: &Result<A>, expected_kind: JsErrorKind, expected_message: &str) {
+    fn assert_js_error<A: fmt::Debug>(
+        result: &Result<A>,
+        expected_kind: JsErrorKind,
+        expected_message: &str,
+    ) {
         if let &Err(Error(ref k, _)) = result {
             match k {
-                &ErrorKind::Js(JsError { kind, ref message, ..}) => {
+                &ErrorKind::Js(JsError {
+                    kind, ref message, ..
+                }) => {
                     assert_eq!(expected_kind, kind);
                     assert_eq!(expected_message, message);
                 }
@@ -951,7 +980,7 @@ mod tests {
 
     #[test]
     fn eval_string_undefined() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("undefined").unwrap().to_value();
         assert_eq!(Value::Undefined, value);
@@ -960,7 +989,7 @@ mod tests {
 
     #[test]
     fn eval_string_null() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("null").unwrap().to_value();
         assert_eq!(Value::Null, value);
@@ -969,7 +998,7 @@ mod tests {
 
     #[test]
     fn eval_string_boolean_true() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("true").unwrap().to_value();
         assert_eq!(Value::Boolean(true), value);
@@ -978,7 +1007,7 @@ mod tests {
 
     #[test]
     fn eval_string_boolean_false() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("false").unwrap().to_value();
         assert_eq!(Value::Boolean(false), value);
@@ -987,7 +1016,7 @@ mod tests {
 
     #[test]
     fn eval_string_number_integral() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("4").unwrap().to_value();
         assert_eq!(Value::Number(4.0), value);
@@ -996,7 +1025,7 @@ mod tests {
 
     #[test]
     fn eval_string_number_fractional() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("0.5").unwrap().to_value();
         assert_eq!(Value::Number(0.5), value);
@@ -1005,7 +1034,7 @@ mod tests {
 
     #[test]
     fn eval_string_string() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("'ab'").unwrap().to_value();
         assert_eq!(Value::String("ab".to_owned()), value);
@@ -1014,21 +1043,28 @@ mod tests {
 
     #[test]
     fn eval_string_array() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("['a', 3, false]").unwrap().to_value();
-        assert_eq!(Value::Array(vec![Value::String("a".to_owned()),
-                                     Value::Number(3.0),
-                                     Value::Boolean(false)]),
-                   value);
+        assert_eq!(
+            Value::Array(vec![
+                Value::String("a".to_owned()),
+                Value::Number(3.0),
+                Value::Boolean(false)
+            ]),
+            value
+        );
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_object() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
-        let value = ctx.eval_string("({a: 'a', b: 3, c: false})").unwrap().to_value();
+        let value = ctx
+            .eval_string("({a: 'a', b: 3, c: false})")
+            .unwrap()
+            .to_value();
 
         let mut expected = collections::BTreeMap::new();
         expected.insert("a".to_owned(), Value::String("a".to_owned()));
@@ -1041,7 +1077,7 @@ mod tests {
 
     #[test]
     fn eval_string_buffer() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("Duktape.Buffer('abc')").unwrap().to_value();
         assert_eq!(Value::Bytes("abc".as_bytes().to_vec()), value);
@@ -1050,7 +1086,7 @@ mod tests {
 
     #[test]
     fn eval_string_error_generic() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("throw 'foobar';");
         assert_js_error(&value, JsErrorKind::Generic, "foobar");
@@ -1059,7 +1095,7 @@ mod tests {
 
     #[test]
     fn eval_string_error_error() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("throw new Error('xyz')");
         assert_js_error(&value, JsErrorKind::Error, "xyz");
@@ -1068,7 +1104,7 @@ mod tests {
 
     #[test]
     fn eval_string_eval_error() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("throw new EvalError('xyz')");
         assert_js_error(&value, JsErrorKind::Eval, "xyz");
@@ -1077,7 +1113,7 @@ mod tests {
 
     #[test]
     fn eval_string_range_error() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("throw new RangeError('xyz')");
         assert_js_error(&value, JsErrorKind::Range, "xyz");
@@ -1086,7 +1122,7 @@ mod tests {
 
     #[test]
     fn eval_string_reference_error() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("throw new ReferenceError('xyz')");
         assert_js_error(&value, JsErrorKind::Reference, "xyz");
@@ -1095,7 +1131,7 @@ mod tests {
 
     #[test]
     fn eval_string_syntax_error() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("throw new SyntaxError('xyz')");
         assert_js_error(&value, JsErrorKind::Syntax, "xyz");
@@ -1104,7 +1140,7 @@ mod tests {
 
     #[test]
     fn eval_string_type_error() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("throw new TypeError('xyz')");
         assert_js_error(&value, JsErrorKind::Type, "xyz");
@@ -1113,7 +1149,7 @@ mod tests {
 
     #[test]
     fn eval_string_uri_error() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.eval_string("throw new URIError('xyz')");
         assert_js_error(&value, JsErrorKind::Uri, "xyz");
@@ -1122,13 +1158,15 @@ mod tests {
 
     #[test]
     fn eval_string_global_object_get_key_call() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
-        ctx.eval_string(r"
+        ctx.eval_string(
+            r"
           function foo() {
             return 'a';
-          }")
-            .unwrap();
+          }",
+        )
+        .unwrap();
         let global = ctx.global_object();
         ctx.assert_clean();
         let foo = global.get("foo").unwrap();
@@ -1140,58 +1178,70 @@ mod tests {
 
     #[test]
     fn eval_string_global_object_call_method() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
-        ctx.eval_string(r"
+        ctx.eval_string(
+            r"
           var bar = 2;
           function foo() {
             if (this === undefined || this.bar !== 2) {
               throw 'b';
             }
             return Array.prototype.slice.call(arguments);
-          }")
-            .unwrap();
+          }",
+        )
+        .unwrap();
         let global = ctx.global_object();
         ctx.assert_clean();
-        let value = global.call_method("foo", &[&Value::Number(4.25)]).unwrap().to_value();
+        let value = global
+            .call_method("foo", &[&Value::Number(4.25)])
+            .unwrap()
+            .to_value();
         assert_eq!(Value::Array(vec![Value::Number(4.25)]), value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_global_object_get_key_call_with_this() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
-        ctx.eval_string(r"
+        ctx.eval_string(
+            r"
           var bar = 2;
           function foo() {
             if (this === undefined || this.bar !== 2) {
               throw 'b';
             }
             return Array.prototype.slice.call(arguments);
-          }")
-            .unwrap();
+          }",
+        )
+        .unwrap();
         let global = ctx.global_object();
         ctx.assert_clean();
         let foo = global.get("foo").unwrap();
         ctx.assert_clean();
-        let value = foo.call_with_this(&global, &[&Value::Number(4.25)]).unwrap().to_value();
+        let value = foo
+            .call_with_this(&global, &[&Value::Number(4.25)])
+            .unwrap()
+            .to_value();
         assert_eq!(Value::Array(vec![Value::Number(4.25)]), value);
         ctx.assert_clean();
     }
 
     #[test]
     fn eval_string_global_object_get_key_new() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
-        ctx.eval_string(r"
+        ctx.eval_string(
+            r"
           function foo() {
             if (this.constructor !== foo) {
               throw 'b';
             }
             return Array.prototype.slice.call(arguments);
-          }")
-            .unwrap();
+          }",
+        )
+        .unwrap();
         let global = ctx.global_object();
         ctx.assert_clean();
         let foo = global.get("foo").unwrap();
@@ -1203,13 +1253,15 @@ mod tests {
 
     #[test]
     fn eval_string_call_global() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
-        ctx.eval_string(r"
+        ctx.eval_string(
+            r"
           function foo() {
             return 'a';
-          }")
-            .unwrap();
+          }",
+        )
+        .unwrap();
         let value = ctx.call_global("foo", &[]).unwrap().to_value();
         assert_eq!(Value::String("a".to_owned()), value);
         ctx.assert_clean();
@@ -1217,31 +1269,39 @@ mod tests {
 
     #[test]
     fn eval_string_call_global_args() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
-        ctx.eval_string(r"
+        ctx.eval_string(
+            r"
           function foo() {
             return Array.prototype.slice.call(arguments);
-          }")
-            .unwrap();
+          }",
+        )
+        .unwrap();
 
         let mut obj = collections::BTreeMap::new();
         obj.insert("a".to_owned(), Value::String("a".to_owned()));
         obj.insert("b".to_owned(), Value::Number(3.0));
         obj.insert("c".to_owned(), Value::Boolean(false));
 
-        let arr = vec![Value::String("a".to_owned()), Value::Number(3.0), Value::Boolean(false)];
+        let arr = vec![
+            Value::String("a".to_owned()),
+            Value::Number(3.0),
+            Value::Boolean(false),
+        ];
 
         let bytes = vec![0, 1, 2, 3];
 
-        let values = &[Value::Undefined,
-                       Value::Null,
-                       Value::Boolean(true),
-                       Value::Number(1.0),
-                       Value::String("foo".to_owned()),
-                       Value::Array(arr),
-                       Value::Object(obj),
-                       Value::Bytes(bytes)];
+        let values = &[
+            Value::Undefined,
+            Value::Null,
+            Value::Boolean(true),
+            Value::Number(1.0),
+            Value::String("foo".to_owned()),
+            Value::Array(arr),
+            Value::Object(obj),
+            Value::Bytes(bytes),
+        ];
         let args = values.iter().map(|v| v as &Argument).collect::<Vec<_>>();
         let value = ctx.call_global("foo", &args).unwrap().to_value();
         assert_eq!(Value::Array(values.to_vec()), value);
@@ -1250,13 +1310,15 @@ mod tests {
 
     #[test]
     fn eval_string_call_global_error() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
-        ctx.eval_string(r"
+        ctx.eval_string(
+            r"
           function foo() {
             throw 'a';
-          }")
-           .unwrap();
+          }",
+        )
+        .unwrap();
         let value = ctx.call_global("foo", &[]);
         assert_js_error(&value, JsErrorKind::Generic, "a");
         ctx.assert_clean();
@@ -1264,7 +1326,7 @@ mod tests {
 
     #[test]
     fn call_non_existent() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
         let ctx = Context::new();
         let value = ctx.call_global("foo", &[]);
         assert_js_error(&value, JsErrorKind::Type, "undefined not callable");
@@ -1275,11 +1337,12 @@ mod tests {
     #[cfg(feature = "logging")]
     #[test]
     fn log_trace() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
 
         // We can only verify that this doesn't panic
         let ctx = Context::new();
-        ctx.eval_string(r"
+        ctx.eval_string(
+            r"
           var l = new Duktape.Logger('test');
           l.l = 0;
           l.trace('trace', 'foo');
@@ -1288,34 +1351,46 @@ mod tests {
           l.warn('warn', 'foo');
           l.error('error', 'foo');
           l.fatal('fatal', 'foo');
-        ").unwrap();
+        ",
+        )
+        .unwrap();
 
-        let log_levels = unsafe {
-            LAST_LOG_LEVELS[0..6].to_vec()
-        };
+        let log_levels = unsafe { LAST_LOG_LEVELS[0..6].to_vec() };
 
-        assert_eq!(log_levels, vec![
-            Some(log::LogLevel::Trace),
-            Some(log::LogLevel::Debug),
-            Some(log::LogLevel::Info),
-            Some(log::LogLevel::Warn),
-            Some(log::LogLevel::Error),
-            Some(log::LogLevel::Error),
-        ]);
+        assert_eq!(
+            log_levels,
+            vec![
+                Some(log::Level::Trace),
+                Some(log::Level::Debug),
+                Some(log::Level::Info),
+                Some(log::Level::Warn),
+                Some(log::Level::Error),
+                Some(log::Level::Error),
+            ]
+        );
     }
 
     #[test]
     fn load_module() {
-        let _ = env_logger::init();
+        let _ = env_logger::try_init();
 
         let resolver: Box<ModuleResolver> = Box::new(|a, _| a[..a.len() - 3].to_owned());
-        let loader: Box<ModuleLoader> = Box::new(|m| if m == "foo" { Some("exports.num = 3".to_owned()) } else { None });
+        let loader: Box<ModuleLoader> = Box::new(|m| {
+            if m == "foo" {
+                Some("exports.num = 3".to_owned())
+            } else {
+                None
+            }
+        });
         let ctx = Context::builder()
             .with_module_resolver(resolver)
             .with_module_loader(loader)
             .build();
 
-        let value = ctx.eval_string(r#"require("foo.js").num"#).unwrap().to_value();
+        let value = ctx
+            .eval_string(r#"require("foo.js").num"#)
+            .unwrap()
+            .to_value();
         assert_eq!(Value::Number(3.0), value);
     }
 }

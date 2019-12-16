@@ -17,20 +17,28 @@ pub use ffi::*;
 
 #[cfg(any(feature = "debug", feature = "trace", feature = "spam"))]
 #[no_mangle]
-pub unsafe extern "C" fn __duktape_sys_debug_write(
+unsafe extern "C" fn __duktape_sys_debug_write(
     _: libc::c_long,
     file: *const libc::c_char,
     line: libc::c_long,
     func: *const libc::c_char,
-    msg: *const libc::c_char) {
-    if log_enabled!(log::LogLevel::Trace) {
+    msg: *const libc::c_char,
+) {
+    if log_enabled!(log::Level::Trace) {
         let file_str = ::std::ffi::CStr::from_ptr(file).to_string_lossy();
 
         let target = format!("{} {}", module_path!(), file_str);
-        if log_enabled!(target: &target, log::LogLevel::Trace) {
+        if log_enabled!(target: &target, log::Level::Trace) {
             let func_str = ::std::ffi::CStr::from_ptr(func).to_string_lossy();
             let msg_str = ::std::ffi::CStr::from_ptr(msg).to_string_lossy();
-            trace!(target: &target, "{} ({}.{}:{})", msg_str, file_str, func_str, line);
+            trace!(
+                target: &target,
+                "{} ({}.{}:{})",
+                msg_str,
+                file_str,
+                func_str,
+                line
+            );
         }
     }
 }

@@ -11,7 +11,7 @@ repository = "https://github.com/dflemstr/duk"
 version = "0.1.0"
 
 [dependencies]
-error-chain = "*"
+error-chain = "0.12.1"
 
 [dependencies.duktape-sys]
 path = "duktape-sys"
@@ -19,10 +19,10 @@ version = "*"
 
 [dependencies.log]
 optional = true
-version = "*"
+version = "0.4.10"
 
 [dev-dependencies]
-env_logger = "*"
+env_logger = "0.7.1"
 
 [features]
 debug = ["duktape-sys/debug"]
@@ -30,3 +30,6 @@ default = ["debug", "logging"]
 logging = ["log"]
 spam = ["duktape-sys/spam"]
 trace = ["duktape-sys/trace"]
+
+[workspace]
+members = ["duktape-sys"]

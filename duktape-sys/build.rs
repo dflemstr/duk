@@ -1,7 +1,7 @@
-extern crate gcc;
+extern crate cc;
 
 fn main() {
-    let mut config = gcc::Config::new();
+    let mut config = cc::Build::new();
 
     let wire_debug = if cfg!(feature = "spam") {
         config.define("DUK_OPT_DEBUG_LEVEL", Some("DUK_LEVEL_DDDEBUG"));
