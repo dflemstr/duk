@@ -16,7 +16,7 @@ failure = "0.1.6"
 
 [dependencies.duk-sys]
 path = "duk-sys"
-version = "0.2.1-alpha.0"
+version = "^0.3.0"
 
 [dependencies.log]
 optional = true
