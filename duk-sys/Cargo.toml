@@ -8,7 +8,7 @@ keywords = ["javascript", "js", "ecmascript", "duktape"]
 license = "MIT"
 name = "duk-sys"
 repository = "https://github.com/dflemstr/duk"
-version = "0.2.0"
+version = "0.2.1-alpha.0"
 
 [build-dependencies]
 cc = "1.0.48"
