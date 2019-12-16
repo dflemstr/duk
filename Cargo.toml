@@ -15,7 +15,6 @@ edition = "2018"
 failure = "0.1.6"
 
 [dependencies.duk-sys]
-path = "duk-sys"
 version = "^0.3.0"
 
 [dependencies.log]
@@ -31,6 +30,3 @@ default = ["debug", "logging"]
 logging = ["log"]
 spam = ["duk-sys/spam"]
 trace = ["duk-sys/trace"]
-
-[workspace]
-members = ["duk-sys"]
