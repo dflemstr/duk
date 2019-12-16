@@ -12,14 +12,6 @@
 //!
 //! [1]: http://duktape.org/
 
-extern crate duktape_sys;
-#[macro_use]
-extern crate error_chain;
-
-#[cfg(feature = "logging")]
-#[macro_use]
-extern crate log;
-
 use std::collections;
 use std::ffi;
 use std::fmt;
@@ -27,6 +19,7 @@ use std::mem;
 use std::os;
 use std::path;
 use std::ptr;
+use std::result;
 use std::slice;
 use std::str;
 use std::sync::atomic;
@@ -92,19 +85,13 @@ pub enum Value {
 }
 
 /// The type of errors that might occur.
-error_chain! {
-    types {
-        Error, ErrorKind, ChainErr, Result;
-    }
-    links {}
-    foreign_links {}
-    errors {
-        Js(error: JsError) {
-            description("Javascript error")
-            display("Javascript error: {}", error.message)
-        }
-    }
+#[derive(Debug, failure::Fail)]
+pub enum Error {
+    #[fail(display = "Javascript error: {:?}", raw)]
+    Js { raw: JsError },
 }
+
+pub type Result<A> = result::Result<A, Error>;
 
 /// An error that originates from executing Javascript/Ecmascript.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -195,8 +182,8 @@ impl Context {
         };
 
         Context {
-            raw: raw,
-            next_stash_idx: atomic::ATOMIC_USIZE_INIT,
+            raw,
+            next_stash_idx: atomic::AtomicUsize::new(0),
             module_resolver: resolver_ptr,
             module_loader: loader_ptr,
         }
@@ -265,14 +252,9 @@ impl Context {
     /// let ctx = duk::Context::new();
     /// let result = ctx.eval_string("var a = {}; a.foo()");
     /// match result {
-    ///   Err(duk::Error(ref k, _)) => {
-    ///     match k {
-    ///       &duk::ErrorKind::Js(duk::JsError { kind, ref message, .. }) => {
-    ///         assert_eq!(duk::JsErrorKind::Type, kind);
-    ///         assert_eq!("undefined not callable", message);
-    ///       },
-    ///       _ => unreachable!(),
-    ///     }
+    ///   Err(duk::Error::Js { raw: duk::JsError { kind, ref message, .. } }) => {
+    ///     assert_eq!(duk::JsErrorKind::Type, kind);
+    ///     assert_eq!("undefined not callable", message);
     ///   },
     ///   _ => unreachable!(),
     /// }
@@ -695,14 +677,15 @@ impl Error {
         });
         let stack = get_string_property(ctx, index, "stack");
 
-        ErrorKind::Js(JsError {
-            kind: kind,
-            message: message,
-            file_name: file_name,
-            line_number: line_number,
-            stack: stack,
-        })
-        .into()
+        Error::Js {
+            raw: JsError {
+                kind,
+                message,
+                file_name,
+                line_number,
+                stack,
+            },
+        }
     }
 }
 
@@ -831,7 +814,7 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
     // The function magic is the log level that this handler should handle.
     let level = duk_get_current_magic(ctx);
     if level < DUK_LOG_TRACE || level > DUK_LOG_FATAL {
-        warn!("log_handler called with invalid level: {}", level);
+        log::warn!("log_handler called with invalid level: {}", level);
         return 0;
     }
 
@@ -912,7 +895,7 @@ unsafe extern "C" fn log_handler(ctx: *mut duktape_sys::duk_context) -> duktape_
     // For test
     stash_log(rust_level, &msg);
 
-    log!(
+    log::log!(
         target: &format!("{}:{}", module_path!(), name_str),
         rust_level,
         "{}",
@@ -963,16 +946,14 @@ mod tests {
         expected_kind: JsErrorKind,
         expected_message: &str,
     ) {
-        if let &Err(Error(ref k, _)) = result {
-            match k {
-                &ErrorKind::Js(JsError {
-                    kind, ref message, ..
-                }) => {
-                    assert_eq!(expected_kind, kind);
-                    assert_eq!(expected_message, message);
-                }
-                _ => panic!("Not a Javascript error: {}", k),
-            }
+        if let &Err(Error::Js {
+            raw: JsError {
+                kind, ref message, ..
+            },
+        }) = result
+        {
+            assert_eq!(expected_kind, kind);
+            assert_eq!(expected_message, message);
         } else {
             panic!("Not an error: {:?}", result);
         }
