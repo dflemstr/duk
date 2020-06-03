@@ -1,0 +1,19 @@
+[package]
+name = "duk-derive"
+version = "0.3.1-alpha.0"
+authors = ["Aiden McClelland <me@drbonez.dev>"]
+edition = "2018"
+description = "derive macros for adding rust fns to duktape context"
+documentation = "https://dflemstr.github.io/duk/duktape_sys"
+homepage = "https://dflemstr.github.io/duk/duktape_sys"
+keywords = ["javascript", "js", "ecmascript", "duktape"]
+license = "MIT"
+repository = "https://github.com/dflemstr/duk"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.18"
+quote = "1.0.6"
+syn = { version = "1.0.30", features = ["full", "extra-traits"] }

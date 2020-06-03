@@ -11,7 +11,6 @@
 //! implemented.
 //!
 //! [1]: http://duktape.org/
-
 use std::collections;
 use std::ffi;
 use std::fmt;
@@ -23,6 +22,20 @@ use std::result;
 use std::slice;
 use std::str;
 use std::sync::atomic;
+
+#[cfg(feature = "serde")]
+mod de;
+#[cfg(feature = "serde")]
+mod ser;
+
+#[cfg(feature = "serde")]
+pub use crate::de::deserialize_from_stack;
+#[cfg(feature = "serde")]
+pub use crate::ser::serialize_to_stack;
+#[cfg(feature = "duk-derive")]
+pub use duk_derive::*;
+#[cfg(feature = "derive")]
+pub use duk_sys;
 
 pub type ModuleResolver = dyn Fn(String, String) -> String;
 pub type ModuleLoader = dyn Fn(String) -> Option<String>;
@@ -345,6 +358,23 @@ impl Context {
             Ok(self.pop_reference())
         } else {
             Err(self.pop_error())
+        }
+    }
+
+    pub unsafe fn add_global_fn(
+        &self,
+        name: &str,
+        f: unsafe extern "C" fn(*mut duk_sys::duk_context) -> i32,
+        nargs: usize,
+    ) {
+        duk_sys::duk_push_c_function(self.raw, Some(f), nargs as i32);
+        duk_sys::duk_put_global_lstring(self.raw, name.as_ptr().cast(), name.len());
+    }
+
+    pub unsafe fn stack_guard(&self) -> StackRAII {
+        StackRAII {
+            ctx: self.raw,
+            idx: duk_sys::duk_get_top(self.raw),
         }
     }
 }
@@ -707,11 +737,15 @@ impl JsErrorKind {
     }
 }
 
-unsafe fn get_string(ctx: *mut duk_sys::duk_context, index: duk_sys::duk_idx_t) -> String {
+unsafe fn get_str<'a>(ctx: *mut duk_sys::duk_context, index: duk_sys::duk_idx_t) -> &'a str {
     let mut len = 0;
     let data = duk_sys::duk_get_lstring(ctx, index, &mut len);
     let slice = slice::from_raw_parts(data as *const u8, len);
-    String::from(str::from_utf8(slice).unwrap())
+    str::from_utf8(slice).unwrap()
+}
+
+unsafe fn get_string(ctx: *mut duk_sys::duk_context, index: duk_sys::duk_idx_t) -> String {
+    String::from(get_str(ctx, index))
 }
 
 unsafe fn get_string_property(
@@ -919,11 +953,48 @@ unsafe extern "C" fn fatal_handler(_: *mut os::raw::c_void, msg_raw: *const os::
     panic!("Duktape fatal error: {}", msg)
 }
 
+pub struct StackRAII {
+    ctx: *mut duk_sys::duk_context,
+    idx: i32,
+}
+impl StackRAII {
+    pub fn new(ctx: *mut duk_sys::duk_context) -> Self {
+        let mut res = StackRAII { ctx, idx: 0 };
+        res.checkpoint();
+        res
+    }
+
+    pub fn checkpoint(&mut self) {
+        unsafe {
+            self.idx = duk_sys::duk_get_top(self.ctx);
+        }
+    }
+
+    pub fn push(&mut self) {
+        self.idx += 1;
+    }
+
+    pub fn pop(&mut self) {
+        self.idx -= 1;
+    }
+
+    pub fn idx(&self) -> i32 {
+        self.idx
+    }
+}
+impl Drop for StackRAII {
+    fn drop(&mut self) {
+        unsafe { duk_sys::duk_pop_n(self.ctx, duk_sys::duk_get_top(self.ctx) - self.idx) }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate env_logger;
 
     use super::*;
+    #[allow(unused_imports)]
+    use crate as duk;
 
     use std::collections;
     use std::fmt;
@@ -1361,5 +1432,20 @@ mod tests {
             .unwrap()
             .to_value();
         assert_eq!(Value::Number(3.0), value);
+    }
+
+    #[cfg_attr(feature = "derive", duk_derive::duktape_fn)]
+    fn test_rust_fn(input: u8) -> String {
+        format!("test {}", input)
+    }
+
+    #[test]
+    fn call_rs_from_js() {
+        let ctx = Context::new();
+
+        let a = add_global_fn!(ctx, test_rust_fn);
+
+        let val = ctx.eval_string(r#"test_rust_fn(5.5)"#).unwrap().to_value();
+        assert_eq!(Value::String("test 5".to_owned()), val);
     }
 }
