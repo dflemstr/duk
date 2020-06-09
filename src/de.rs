@@ -351,12 +351,22 @@ impl<'de> Deserializer<'de> for DukDe {
                         duk_sys::DUK_ENUM_OWN_PROPERTIES_ONLY,
                     );
 
-                    if duk_sys::duk_next(self.0.ctx, self.0.idx, 1) == 1 {
-                        seed.deserialize(DukDe {
-                            ctx: self.0.ctx,
-                            idx: duk_sys::duk_get_top(self.0.ctx) - 2,
-                        })
-                        .map(|v| (v, VariantAccessor(self.0)))
+                    if duk_sys::duk_next(self.0.ctx, -1, 1) == 1 {
+                        let res = seed
+                            .deserialize(DukDe {
+                                ctx: self.0.ctx,
+                                idx: duk_sys::duk_get_top(self.0.ctx) - 2,
+                            })
+                            .map(|v| {
+                                (
+                                    v,
+                                    VariantAccessor(DukDe {
+                                        ctx: self.0.ctx,
+                                        idx: duk_sys::duk_get_top(self.0.ctx) - 1,
+                                    }),
+                                )
+                            });
+                        res
                     } else {
                         Err(serde::de::Error::invalid_value(
                             serde::de::Unexpected::Map,
@@ -513,7 +523,7 @@ pub unsafe fn deserialize_from_stack<'de, T: serde::Deserialize<'de>>(
     index: i32,
 ) -> Result<T, Error> {
     let _guard = crate::StackRAII::new(ctx);
-    let top = duk_sys::duk_get_top(ctx) + index;
+    let top = duk_sys::duk_get_top(ctx);
     let idx = if index >= top {
         return Err(serde::de::Error::custom("index out of bounds"));
     } else if index >= 0 {

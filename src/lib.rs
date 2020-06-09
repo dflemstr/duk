@@ -102,6 +102,12 @@ pub enum Value {
 pub enum Error {
     #[fail(display = "Javascript error: {:?}", raw)]
     Js { raw: JsError },
+    #[cfg(feature = "serde")]
+    #[fail(display = "Deserialization error: {:?}", raw)]
+    De { raw: de::Error },
+    #[cfg(feature = "serde")]
+    #[fail(display = "Serialization error: {:?}", raw)]
+    Ser { raw: ser::Error },
 }
 
 pub type Result<A> = result::Result<A, Error>;
@@ -417,6 +423,12 @@ impl<'a> Reference<'a> {
     /// Converts this reference to a `Value` which can be used for further processing by Rust code.
     pub fn to_value(&self) -> Value {
         self.with_value(|| unsafe { Value::get(self.ctx.raw, -1) })
+    }
+
+    #[cfg(feature = "serde")]
+    pub fn to_deserialize<'de, T: serde::Deserialize<'de>>(&self) -> Result<T> {
+        self.with_value(|| unsafe { deserialize_from_stack(self.ctx.raw, -1) })
+            .map_err(|e| Error::De { raw: e })
     }
 
     /// Gets the property with the specified key, provided that this reference points to something
@@ -958,7 +970,7 @@ pub struct StackRAII {
     idx: i32,
 }
 impl StackRAII {
-    pub fn new(ctx: *mut duk_sys::duk_context) -> Self {
+    pub unsafe fn new(ctx: *mut duk_sys::duk_context) -> Self {
         let mut res = StackRAII { ctx, idx: 0 };
         res.checkpoint();
         res
@@ -1434,18 +1446,81 @@ mod tests {
         assert_eq!(Value::Number(3.0), value);
     }
 
-    #[cfg_attr(feature = "derive", duk_derive::duktape_fn)]
+    #[cfg_attr(feature = "derive", duktape_fn)]
     fn test_rust_fn(input: u8) -> String {
         format!("test {}", input)
+    }
+
+    #[cfg_attr(feature = "derive", duktape_fn)]
+    fn test_rust_complex_fn(input: TestComplexStruct) -> TestComplexStruct {
+        println!("{:?}", input);
+        input
+    }
+
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
+    enum TestEnum {
+        A,
+    }
+
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
+    enum TestComplexEnum {
+        A(i64, i64),
+        B { hello: String },
+    }
+
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
+    struct TestComplexStruct {
+        a: i64,
+        b: String,
+        c: bool,
+        d: TestEnum,
+        e: TestComplexEnum,
+        f: TestComplexEnum,
+        g: std::collections::HashMap<String, String>,
     }
 
     #[test]
     fn call_rs_from_js() {
         let ctx = Context::new();
 
-        let a = add_global_fn!(ctx, test_rust_fn);
+        add_global_fn!(ctx, test_rust_fn);
+        add_global_fn!(ctx, test_rust_complex_fn);
 
         let val = ctx.eval_string(r#"test_rust_fn(5.5)"#).unwrap().to_value();
         assert_eq!(Value::String("test 5".to_owned()), val);
+
+        let reference = ctx
+            .eval_string(
+                r#"test_rust_complex_fn({
+                    a: 0,
+                    b: "hello",
+                    c: true,
+                    d: "A",
+                    e: { "A": [0, 0] },
+                    f: { "B": { hello: "hello" }},
+                    g: { "a": "b", "c": "d" }
+                })"#,
+            )
+            .unwrap();
+        let val = reference.to_deserialize().unwrap();
+        assert_eq!(
+            TestComplexStruct {
+                a: 0,
+                b: "hello".to_owned(),
+                c: true,
+                d: TestEnum::A,
+                e: TestComplexEnum::A(0, 0),
+                f: TestComplexEnum::B {
+                    hello: "hello".to_owned(),
+                },
+                g: {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert("a".to_owned(), "b".to_owned());
+                    map.insert("c".to_owned(), "d".to_owned());
+                    map
+                }
+            },
+            val
+        );
     }
 }
