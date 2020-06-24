@@ -2,21 +2,14 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::parse::Parse;
 use syn::spanned::Spanned;
 
 #[proc_macro_attribute]
 pub fn duktape_fn(_attr: TokenStream, mut item: TokenStream) -> TokenStream {
     let ast: syn::ItemFn = syn::parse(item.clone()).expect("failed to parse token stream as fn");
     let fn_name = ast.sig.ident;
-    let duk_fn_name = syn::Ident::new(
-        &format!("duk_derive_{}", fn_name),
-        proc_macro2::Span::call_site(),
-    );
-    let fn_arg_len_name = syn::Ident::new(
-        &format!("{}_arg_len", duk_fn_name),
-        proc_macro2::Span::call_site(),
-    );
+    let fn_vis = ast.vis;
+    let fn_name_str = syn::LitStr::new(&format!("{}", fn_name), fn_name.span());
     let mut arg_names = Vec::new();
     let mut args = Vec::new();
     for arg in ast.sig.inputs {
@@ -68,73 +61,27 @@ pub fn duktape_fn(_attr: TokenStream, mut item: TokenStream) -> TokenStream {
         },
     };
     let gen = quote! {
-        unsafe extern "C" fn #duk_fn_name(ctx: *mut duk_sys::duk_context) -> i32 {
-            #(
-                #args
-            )*
+        #fn_vis mod #fn_name {
+            use super::duk;
+            use super::#fn_name as fn_impl;
 
-            let res = #fn_name(#(
-                #arg_names,
-            )*);
+            pub struct DukFnImpl;
 
-            #ret
+            unsafe impl duk::DukFunction for DukFnImpl {
+                const NARGS: usize = #fn_arg_len;
+                const NAME: &'static str = #fn_name_str;
+                unsafe extern "C" fn duk_call(ctx: *mut duk_sys::duk_context) -> i32 {
+                    #(
+                        #args
+                    )*
+                    let res = fn_impl(#(
+                        #arg_names,
+                    )*);
+                    #ret
+                }
+            }
         }
-        const #fn_arg_len_name: usize = #fn_arg_len;
     };
     item.extend(TokenStream::from(gen));
     item
-}
-
-struct AddGlobalFn {
-    ctx: syn::Expr,
-    func: syn::Path,
-}
-impl Parse for AddGlobalFn {
-    fn parse(input: syn::parse::ParseStream) -> syn::parse::Result<Self> {
-        let ctx = input.parse()?;
-        input.parse::<syn::Token![,]>()?;
-        let func = input.parse()?;
-        Ok(AddGlobalFn { ctx, func })
-    }
-}
-
-#[proc_macro]
-pub fn add_global_fn(input: TokenStream) -> TokenStream {
-    let AddGlobalFn { ctx, func } = syn::parse_macro_input!(input as AddGlobalFn);
-
-    let leaf = func.segments.iter().cloned().next_back().unwrap().ident;
-
-    let derived = syn::Path {
-        leading_colon: func.leading_colon,
-        segments: func
-            .segments
-            .iter()
-            .cloned()
-            .take(func.segments.len() - 1)
-            .chain(std::iter::once(syn::PathSegment {
-                ident: syn::Ident::new(&format!("duk_derive_{}", leaf), leaf.span()),
-                arguments: syn::PathArguments::None,
-            }))
-            .collect(),
-    };
-    let derived_arg_len = syn::Path {
-        leading_colon: func.leading_colon,
-        segments: func
-            .segments
-            .iter()
-            .cloned()
-            .take(func.segments.len() - 1)
-            .chain(std::iter::once(syn::PathSegment {
-                ident: syn::Ident::new(&format!("duk_derive_{}_arg_len", leaf), leaf.span()),
-                arguments: syn::PathArguments::None,
-            }))
-            .collect(),
-    };
-
-    (quote! {
-        unsafe {
-            #ctx.add_global_fn(stringify!(#leaf), #derived, #derived_arg_len)
-        }
-    })
-    .into()
 }

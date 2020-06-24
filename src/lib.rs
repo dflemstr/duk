@@ -367,14 +367,12 @@ impl Context {
         }
     }
 
-    pub unsafe fn add_global_fn(
-        &self,
-        name: &str,
-        f: unsafe extern "C" fn(*mut duk_sys::duk_context) -> i32,
-        nargs: usize,
-    ) {
-        duk_sys::duk_push_c_function(self.raw, Some(f), nargs as i32);
-        duk_sys::duk_put_global_lstring(self.raw, name.as_ptr().cast(), name.len());
+    #[cfg(feature = "derive")]
+    pub fn add_global_fn<F: DukFunction>(&self) {
+        unsafe {
+            duk_sys::duk_push_c_function(self.raw, Some(F::duk_call), F::NARGS as i32);
+            duk_sys::duk_put_global_lstring(self.raw, F::NAME.as_ptr().cast(), F::NAME.len());
+        }
     }
 
     pub unsafe fn stack_guard(&self) -> StackRAII {
@@ -998,6 +996,19 @@ impl Drop for StackRAII {
     fn drop(&mut self) {
         unsafe { duk_sys::duk_pop_n(self.ctx, duk_sys::duk_get_top(self.ctx) - self.idx) }
     }
+}
+
+pub unsafe trait DukFunction {
+    const NARGS: usize;
+    const NAME: &'static str;
+    unsafe extern "C" fn duk_call(ctx: *mut duk_sys::duk_context) -> i32;
+}
+
+#[macro_export]
+macro_rules! add_global_fn {
+    ($ctx:expr, $fn:ident) => {
+        ($ctx).add_global_fn::<$fn::DukFnImpl>()
+    };
 }
 
 #[cfg(test)]
