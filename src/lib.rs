@@ -367,7 +367,6 @@ impl Context {
         }
     }
 
-    #[cfg(feature = "derive")]
     pub fn add_global_fn<F: DukFunction>(&self) {
         unsafe {
             duk_sys::duk_push_c_function(self.raw, Some(F::duk_call), F::NARGS as i32);
@@ -1490,7 +1489,7 @@ mod tests {
         g: std::collections::HashMap<String, String>,
     }
 
-    #[test]
+    #[cfg_attr(feature = "derive", test)]
     fn call_rs_from_js() {
         let ctx = Context::new();
 
