@@ -1003,6 +1003,7 @@ pub unsafe trait DukFunction {
     unsafe extern "C" fn duk_call(ctx: *mut duk_sys::duk_context) -> i32;
 }
 
+#[cfg(feature = "derive")]
 #[macro_export]
 macro_rules! add_global_fn {
     ($ctx:expr, $fn:ident) => {
@@ -1489,7 +1490,8 @@ mod tests {
         g: std::collections::HashMap<String, String>,
     }
 
-    #[cfg_attr(feature = "derive", test)]
+    #[cfg(feature = "derive")]
+    #[test]
     fn call_rs_from_js() {
         let ctx = Context::new();
 
