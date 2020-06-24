@@ -30,7 +30,7 @@ pub fn duktape_fn(_attr: TokenStream, mut item: TokenStream) -> TokenStream {
                     duk::duk_sys::duk_push_error_object(
                         ctx,
                         duk::duk_sys::DUK_ERR_TYPE_ERROR as i32,
-                        format!("{}", e).as_ptr().cast()
+                        std::ffi::CString::new(format!("{}", e)).into_raw(),
                     );
                     duk::duk_sys::duk_throw_raw(ctx);
                     return 0;
