@@ -19,8 +19,13 @@ pub fn duktape_fn(_attr: TokenStream, mut item: TokenStream) -> TokenStream {
     let mut args = Vec::new();
     for arg in ast.sig.inputs {
         let arg = match arg {
-            syn::FnArg::Receiver(_) => {
-                panic!("cannot derive `duktape_fn` on function that takes `self` as an argument")
+            syn::FnArg::Receiver(s) => {
+                return syn::Error::new(
+                    s.span(),
+                    "cannot derive `duktape_fn` on function that takes `self` as an argument",
+                )
+                .to_compile_error()
+                .into();
             }
             syn::FnArg::Typed(a) => a,
         };
