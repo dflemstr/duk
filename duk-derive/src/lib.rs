@@ -30,7 +30,7 @@ pub fn duktape_fn(_attr: TokenStream, mut item: TokenStream) -> TokenStream {
                     duk::duk_sys::duk_push_error_object(
                         ctx,
                         duk::duk_sys::DUK_ERR_TYPE_ERROR as i32,
-                        std::ffi::CString::new(format!("{}", e)).into_raw(),
+                        std::ffi::CString::new(format!("{}", e)).unwrap_or_default().into_raw(),
                     );
                     duk::duk_sys::duk_throw_raw(ctx);
                     return 0;
@@ -49,7 +49,7 @@ pub fn duktape_fn(_attr: TokenStream, mut item: TokenStream) -> TokenStream {
                     duk::duk_sys::duk_push_error_object(
                         ctx,
                         duk::duk_sys::DUK_ERR_TYPE_ERROR as i32,
-                        std::ffi::CString::new(format!("{}", e)).into_raw(),
+                        std::ffi::CString::new(format!("{}", e)).unwrap_or_default().into_raw(),
                     );
                     duk::duk_sys::duk_throw_raw(ctx);
                     0
@@ -74,9 +74,27 @@ pub fn duktape_fn(_attr: TokenStream, mut item: TokenStream) -> TokenStream {
                     #(
                         #args
                     )*
-                    let res = fn_impl(#(
+                    let res = match std::panic::catch_unwind(|| fn_impl(#(
                         #arg_names,
-                    )*);
+                    )*)) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            let error = if let Some(msg) = e.downcast_ref::<&str>() {
+                                format!("panic: {}", *msg)
+                            } else if let Some(msg) = e.downcast_ref::<String>() {
+                                format!("panic: {}", msg)
+                            } else {
+                                "panic: unknown error".into()
+                            };
+                            duk::duk_sys::duk_push_error_object(
+                                ctx,
+                                duk::duk_sys::DUK_ERR_ERROR as i32,
+                                std::ffi::CString::new(error).unwrap_or_default().into_raw(),
+                            );
+                            duk::duk_sys::duk_throw_raw(ctx);
+                            return 0;
+                        }
+                    };
                     #ret
                 }
             }

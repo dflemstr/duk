@@ -1468,6 +1468,11 @@ mod tests {
         input
     }
 
+    #[cfg_attr(feature = "derive", duktape_fn)]
+    fn test_rust_panic_fn() {
+        panic!("panicked successfully")
+    }
+
     #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     enum TestEnum {
         A,
@@ -1497,6 +1502,7 @@ mod tests {
 
         add_global_fn!(ctx, test_rust_fn);
         add_global_fn!(ctx, test_rust_complex_fn);
+        add_global_fn!(ctx, test_rust_panic_fn);
 
         let val = ctx.eval_string(r#"test_rust_fn(5.5)"#).unwrap().to_value();
         assert_eq!(Value::String("test 5".to_owned()), val);
@@ -1534,5 +1540,7 @@ mod tests {
             },
             val
         );
+
+        assert!(ctx.eval_string(r"test_rust_panic_fn()").is_err());
     }
 }
