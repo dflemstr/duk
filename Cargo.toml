@@ -12,21 +12,33 @@ version = "0.3.1-alpha.0"
 edition = "2018"
 
 [dependencies]
-failure = "0.1.6"
+failure = "0.1.8"
 
 [dependencies.duk-sys]
-version = "^0.3.0"
+path = "./duk-sys"
+version = "0.3.1-alpha.0"
+
+[dependencies.duk-derive]
+optional = true
+path = "./duk-derive"
+version = "0.3.1-alpha.0"
 
 [dependencies.log]
 optional = true
-version = "0.4.10"
+version = "0.4.8"
+
+[dependencies.serde]
+optional = true
+version = "1.0"
 
 [dev-dependencies]
 env_logger = "0.7.1"
+serde = { version = "1.0", features = ["derive"] }
 
 [features]
 debug = ["duk-sys/debug"]
-default = ["debug", "logging"]
+default = ["debug", "logging", "derive"]
 logging = ["log"]
 spam = ["duk-sys/spam"]
 trace = ["duk-sys/trace"]
+derive = ["duk-derive", "serde"]

@@ -11,7 +11,6 @@
 //! implemented.
 //!
 //! [1]: http://duktape.org/
-
 use std::collections;
 use std::ffi;
 use std::fmt;
@@ -23,6 +22,20 @@ use std::result;
 use std::slice;
 use std::str;
 use std::sync::atomic;
+
+#[cfg(feature = "serde")]
+mod de;
+#[cfg(feature = "serde")]
+mod ser;
+
+#[cfg(feature = "serde")]
+pub use crate::de::deserialize_from_stack;
+#[cfg(feature = "serde")]
+pub use crate::ser::serialize_to_stack;
+#[cfg(feature = "duk-derive")]
+pub use duk_derive::*;
+#[cfg(feature = "derive")]
+pub use duk_sys;
 
 pub type ModuleResolver = dyn Fn(String, String) -> String;
 pub type ModuleLoader = dyn Fn(String) -> Option<String>;
@@ -89,6 +102,12 @@ pub enum Value {
 pub enum Error {
     #[fail(display = "Javascript error: {:?}", raw)]
     Js { raw: JsError },
+    #[cfg(feature = "serde")]
+    #[fail(display = "Deserialization error: {:?}", raw)]
+    De { raw: de::Error },
+    #[cfg(feature = "serde")]
+    #[fail(display = "Serialization error: {:?}", raw)]
+    Ser { raw: ser::Error },
 }
 
 pub type Result<A> = result::Result<A, Error>;
@@ -347,6 +366,20 @@ impl Context {
             Err(self.pop_error())
         }
     }
+
+    pub fn add_global_fn<F: DukFunction>(&self) {
+        unsafe {
+            duk_sys::duk_push_c_function(self.raw, Some(F::duk_call), F::NARGS as i32);
+            duk_sys::duk_put_global_lstring(self.raw, F::NAME.as_ptr().cast(), F::NAME.len());
+        }
+    }
+
+    pub unsafe fn stack_guard(&self) -> StackRAII {
+        StackRAII {
+            ctx: self.raw,
+            idx: duk_sys::duk_get_top(self.raw),
+        }
+    }
 }
 
 impl fmt::Debug for Context {
@@ -387,6 +420,12 @@ impl<'a> Reference<'a> {
     /// Converts this reference to a `Value` which can be used for further processing by Rust code.
     pub fn to_value(&self) -> Value {
         self.with_value(|| unsafe { Value::get(self.ctx.raw, -1) })
+    }
+
+    #[cfg(feature = "serde")]
+    pub fn to_deserialize<'de, T: serde::Deserialize<'de>>(&self) -> Result<T> {
+        self.with_value(|| unsafe { deserialize_from_stack(self.ctx.raw, -1) })
+            .map_err(|e| Error::De { raw: e })
     }
 
     /// Gets the property with the specified key, provided that this reference points to something
@@ -707,11 +746,15 @@ impl JsErrorKind {
     }
 }
 
-unsafe fn get_string(ctx: *mut duk_sys::duk_context, index: duk_sys::duk_idx_t) -> String {
+unsafe fn get_str<'a>(ctx: *mut duk_sys::duk_context, index: duk_sys::duk_idx_t) -> &'a str {
     let mut len = 0;
     let data = duk_sys::duk_get_lstring(ctx, index, &mut len);
     let slice = slice::from_raw_parts(data as *const u8, len);
-    String::from(str::from_utf8(slice).unwrap())
+    str::from_utf8(slice).unwrap()
+}
+
+unsafe fn get_string(ctx: *mut duk_sys::duk_context, index: duk_sys::duk_idx_t) -> String {
+    String::from(get_str(ctx, index))
 }
 
 unsafe fn get_string_property(
@@ -919,11 +962,62 @@ unsafe extern "C" fn fatal_handler(_: *mut os::raw::c_void, msg_raw: *const os::
     panic!("Duktape fatal error: {}", msg)
 }
 
+pub struct StackRAII {
+    ctx: *mut duk_sys::duk_context,
+    idx: i32,
+}
+impl StackRAII {
+    pub unsafe fn new(ctx: *mut duk_sys::duk_context) -> Self {
+        let mut res = StackRAII { ctx, idx: 0 };
+        res.checkpoint();
+        res
+    }
+
+    pub fn checkpoint(&mut self) {
+        unsafe {
+            self.idx = duk_sys::duk_get_top(self.ctx);
+        }
+    }
+
+    pub fn push(&mut self) {
+        self.idx += 1;
+    }
+
+    pub fn pop(&mut self) {
+        self.idx -= 1;
+    }
+
+    pub fn idx(&self) -> i32 {
+        self.idx
+    }
+}
+impl Drop for StackRAII {
+    fn drop(&mut self) {
+        unsafe { duk_sys::duk_pop_n(self.ctx, duk_sys::duk_get_top(self.ctx) - self.idx) }
+    }
+}
+
+pub unsafe trait DukFunction {
+    const NARGS: usize;
+    const NAME: &'static str;
+    unsafe extern "C" fn duk_call(ctx: *mut duk_sys::duk_context) -> i32;
+}
+
+#[cfg(feature = "derive")]
+#[macro_export]
+macro_rules! add_global_fn {
+    ($ctx:expr, $fn:ident) => {
+        ($ctx).add_global_fn::<$fn::DukFnImpl>()
+    };
+}
+
 #[cfg(test)]
 mod tests {
     extern crate env_logger;
 
     use super::*;
+    #[allow(unused_imports)]
+    use crate as duk;
 
     use std::collections;
     use std::fmt;
@@ -1361,5 +1455,92 @@ mod tests {
             .unwrap()
             .to_value();
         assert_eq!(Value::Number(3.0), value);
+    }
+
+    #[cfg_attr(feature = "derive", duktape_fn)]
+    fn test_rust_fn(input: u8) -> String {
+        format!("test {}", input)
+    }
+
+    #[cfg_attr(feature = "derive", duktape_fn)]
+    fn test_rust_complex_fn(input: TestComplexStruct) -> TestComplexStruct {
+        println!("{:?}", input);
+        input
+    }
+
+    #[cfg_attr(feature = "derive", duktape_fn)]
+    fn test_rust_panic_fn() {
+        panic!("panicked successfully")
+    }
+
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
+    enum TestEnum {
+        A,
+    }
+
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
+    enum TestComplexEnum {
+        A(i64, i64),
+        B { hello: String },
+    }
+
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
+    struct TestComplexStruct {
+        a: i64,
+        b: String,
+        c: bool,
+        d: TestEnum,
+        e: TestComplexEnum,
+        f: TestComplexEnum,
+        g: std::collections::HashMap<String, String>,
+    }
+
+    #[cfg(feature = "derive")]
+    #[test]
+    fn call_rs_from_js() {
+        let ctx = Context::new();
+
+        add_global_fn!(ctx, test_rust_fn);
+        add_global_fn!(ctx, test_rust_complex_fn);
+        add_global_fn!(ctx, test_rust_panic_fn);
+
+        let val = ctx.eval_string(r#"test_rust_fn(5.5)"#).unwrap().to_value();
+        assert_eq!(Value::String("test 5".to_owned()), val);
+
+        let reference = ctx
+            .eval_string(
+                r#"test_rust_complex_fn({
+                    a: 0,
+                    b: "hello",
+                    c: true,
+                    d: "A",
+                    e: { "A": [0, 0] },
+                    f: { "B": { hello: "hello" }},
+                    g: { "a": "b", "c": "d" }
+                })"#,
+            )
+            .unwrap();
+        let val = reference.to_deserialize().unwrap();
+        assert_eq!(
+            TestComplexStruct {
+                a: 0,
+                b: "hello".to_owned(),
+                c: true,
+                d: TestEnum::A,
+                e: TestComplexEnum::A(0, 0),
+                f: TestComplexEnum::B {
+                    hello: "hello".to_owned(),
+                },
+                g: {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert("a".to_owned(), "b".to_owned());
+                    map.insert("c".to_owned(), "d".to_owned());
+                    map
+                }
+            },
+            val
+        );
+
+        assert!(ctx.eval_string(r"test_rust_panic_fn()").is_err());
     }
 }
