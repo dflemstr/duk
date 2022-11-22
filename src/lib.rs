@@ -275,7 +275,7 @@ impl Context {
     /// }
     /// ```
     pub fn eval_string(&self, string: &str) -> Result<Reference> {
-        let ptr = string.as_ptr() as *const i8;
+        let ptr = string.as_ptr() as *const _;
         let len = string.len();
         unsafe {
             let ret = duk_sys::duk_peval_lstring(self.raw, ptr, len);
@@ -286,8 +286,8 @@ impl Context {
     /// Like `eval_string`, but sets the file name for all of the evaluated functions to the
     /// specified string.
     pub fn eval_string_with_filename(&self, filename: &str, string: &str) -> Result<Reference> {
-        let filename_ptr = filename.as_ptr() as *const i8;
-        let string_ptr = string.as_ptr() as *const i8;
+        let filename_ptr = filename.as_ptr() as *const _;
+        let string_ptr = string.as_ptr() as *const _;
         unsafe {
             duk_sys::duk_push_lstring(self.raw, filename_ptr, filename.len());
             let flags = duk_sys::DUK_COMPILE_EVAL
@@ -494,7 +494,7 @@ impl<'a> Reference<'a> {
     pub fn call_method(&self, name: &str, args: &[&dyn Argument]) -> Result<Reference<'a>> {
         self.with_value(|| unsafe {
             let obj_idx = duk_sys::duk_get_top_index(self.ctx.raw);
-            duk_sys::duk_push_lstring(self.ctx.raw, name.as_ptr() as *const i8, name.len());
+            duk_sys::duk_push_lstring(self.ctx.raw, name.as_ptr() as *const _, name.len());
 
             for arg in args {
                 arg.push_to_context(self.ctx);
@@ -645,7 +645,7 @@ impl Value {
             }
             Value::Number(n) => duk_sys::duk_push_number(ctx, n),
             Value::String(ref string) => {
-                let data = string.as_ptr() as *const i8;
+                let data = string.as_ptr() as *const _;
                 let len = string.len();
                 duk_sys::duk_push_lstring(ctx, data, len);
             }
@@ -660,7 +660,7 @@ impl Value {
                 duk_sys::duk_push_object(ctx);
 
                 for (k, v) in object {
-                    let k_data = k.as_ptr() as *const i8;
+                    let k_data = k.as_ptr() as *const _;
                     let k_len = k.len();
                     duk_sys::duk_push_lstring(ctx, k_data, k_len);
                     v.push(ctx);
